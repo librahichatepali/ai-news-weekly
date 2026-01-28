@@ -38,22 +38,21 @@ def get_aggregated_news():
 
 def send_mail(content):
     sender = os.environ.get('EMAIL_USER')
-    password = os.environ.get('EMAIL_PASS')
+    password = os.environ.get('EMAIL_PASS').strip()
     receiver = '249869251@qq.com'
-    
+
     msg = MIMEText(content, 'html', 'utf-8')
-    msg['From'] = sender
+    msg['From'] = f"News Bot <{sender}>"
     msg['To'] = receiver
     msg['Subject'] = Header('🎮 AI 游戏资讯周报', 'utf-8')
 
     try:
-        # 核心改动：改用 587 端口并显式启动 TLS 
-        server = smtplib.SMTP("smtp.qq.com", 587, timeout=30)
-        server.set_debuglevel(1) # 这会在日志中显示详细的连接过程
-        server.starttls() 
-        server.login(sender, password)
-        server.sendmail(sender, [receiver], msg.as_string())
-        server.quit()
+        # 显式建立 SSL 连接
+        import ssl
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.qq.com", 465, context=context) as server:
+            server.login(sender, password)
+            server.sendmail(sender, [receiver], msg.as_string())
         print("邮件发送成功！")
     except Exception as e:
         print(f"发送失败详情: {e}")
