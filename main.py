@@ -38,8 +38,13 @@ def get_aggregated_news():
 
 def send_mail(content):
     import smtplib
+    import ssl
+    from email.mime.text import MIMEText
+    from email.header import Header
+
     sender = os.environ.get('EMAIL_USER')
-    password = os.environ.get('EMAIL_PASS').strip()
+    # 使用 strip() 强行剔除可能存在的不可见空格
+    password = str(os.environ.get('EMAIL_PASS')).strip() 
     receiver = '249869251@qq.com'
     
     msg = MIMEText(content, 'html', 'utf-8')
@@ -47,34 +52,18 @@ def send_mail(content):
     msg['To'] = receiver
     msg['Subject'] = Header('🎮 AI 游戏资讯周报', 'utf-8')
 
-    try:
-        # 尝试使用端口 25 (普通模式)，这在云服务器上兼容性有时更好
-        server = smtplib.SMTP("smtp.qq.com", 25, timeout=30)
-        server.login(sender, password)
-        server.sendmail(sender, [receiver], msg.as_string())
-        server.quit()
-        print("邮件发送成功！")
-    except Exception as e:
-        print(f"尝试端口25失败: {e}")
-        try:
-            # 如果 25 不行，最后尝试一次 587 + TLS
-            server = smtplib.SMTP("smtp.qq.com", 587, timeout=30)
-            server.starttls()
-            server.login(sender, password)
-            server.sendmail(sender, [receiver], msg.as_string())
-            server.quit()
-            print("通过 587 端口发送成功！")
-        except Exception as e2:
-            print(f"所有端口均尝试失败: {e2}")
+    # 强制指定 TLS 版本，解决 Connection closed 问题
+    context = ssl.create_default_context()
+    context.set_ciphers('DEFAULT@SECLEVEL=1') 
 
     try:
-        # QQ 邮箱 SMTP 服务器配置
-        with smtplib.SMTP_SSL("smtp.qq.com", 465) as server:
+        # 465 端口 + 显式 SSL 上下文是最稳健的组合
+        with smtplib.SMTP_SSL("smtp.qq.com", 465, context=context, timeout=30) as server:
             server.login(sender, password)
             server.sendmail(sender, [receiver], msg.as_string())
-        print("邮件发送成功！")
+        print("🎉 恭喜！邮件发送成功！")
     except Exception as e:
-        print(f"发送失败: {e}")
+        print(f"❌ 发送终极失败详情: {e}")
 
 if __name__ == "__main__":
     news = get_aggregated_news()
