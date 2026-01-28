@@ -37,10 +37,9 @@ def get_aggregated_news():
     return html_template
 
 def send_mail(content):
-    import ssl
+    import smtplib
     sender = os.environ.get('EMAIL_USER')
-    # strip() 会自动删掉你粘贴时可能带入的不可见空格
-    password = os.environ.get('EMAIL_PASS').strip() 
+    password = os.environ.get('EMAIL_PASS').strip()
     receiver = '249869251@qq.com'
     
     msg = MIMEText(content, 'html', 'utf-8')
@@ -48,17 +47,25 @@ def send_mail(content):
     msg['To'] = receiver
     msg['Subject'] = Header('🎮 AI 游戏资讯周报', 'utf-8')
 
-    # 创建一个安全上下文，解决 GitHub 环境下的握手失败问题
-    context = ssl.create_default_context()
-    
     try:
-        # 使用 smtplib.SMTP_SSL 配合 465 端口
-        with smtplib.SMTP_SSL("smtp.qq.com", 465, context=context) as server:
-            server.login(sender, password)
-            server.sendmail(sender, [receiver], msg.as_string())
+        # 尝试使用端口 25 (普通模式)，这在云服务器上兼容性有时更好
+        server = smtplib.SMTP("smtp.qq.com", 25, timeout=30)
+        server.login(sender, password)
+        server.sendmail(sender, [receiver], msg.as_string())
+        server.quit()
         print("邮件发送成功！")
     except Exception as e:
-        print(f"发送失败详情: {e}")
+        print(f"尝试端口25失败: {e}")
+        try:
+            # 如果 25 不行，最后尝试一次 587 + TLS
+            server = smtplib.SMTP("smtp.qq.com", 587, timeout=30)
+            server.starttls()
+            server.login(sender, password)
+            server.sendmail(sender, [receiver], msg.as_string())
+            server.quit()
+            print("通过 587 端口发送成功！")
+        except Exception as e2:
+            print(f"所有端口均尝试失败: {e2}")
 
     try:
         # QQ 邮箱 SMTP 服务器配置
