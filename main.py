@@ -37,24 +37,25 @@ def get_aggregated_news():
     return html_template
 
 def send_mail(content):
-    # 从 GitHub Secrets 读取变量
-    sender = os.environ.get('EMAIL_USER') 
+    sender = os.environ.get('EMAIL_USER')
     password = os.environ.get('EMAIL_PASS')
-    receiver = '249869251@qq.com' # 你的接收邮箱
-
-    # 构建邮件主体，对应你之前的 Email [6] 模块设置
-    mail_body = f"""
-    <div style="line-height: 1.6; color: #333;">
-        <h2 style="color: #007bff; border-bottom: 2px solid #007bff;">🎮 游戏行业价值周报</h2>
-        {content}
-        <p style="font-size: 12px; color: gray;">生成时间：2026年1月28日</p>
-    </div>
-    """
+    receiver = '249869251@qq.com'
     
-    msg = MIMEText(mail_body, 'html', 'utf-8')
+    msg = MIMEText(content, 'html', 'utf-8')
     msg['From'] = sender
     msg['To'] = receiver
     msg['Subject'] = Header('🎮 AI 游戏资讯周报', 'utf-8')
+
+    try:
+        # 使用更通用的 SMTP 方法替代 SMTP_SSL，手动开启 TLS 加密
+        server = smtplib.SMTP("smtp.qq.com", 587) 
+        server.starttls() # 这种方式在 GitHub 环境中更不容易被切断连接
+        server.login(sender, password)
+        server.sendmail(sender, [receiver], msg.as_string())
+        server.quit()
+        print("邮件发送成功！")
+    except Exception as e:
+        print(f"发送失败: {e}")
 
     try:
         # QQ 邮箱 SMTP 服务器配置
