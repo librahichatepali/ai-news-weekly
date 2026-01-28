@@ -47,15 +47,16 @@ def send_mail(content):
     msg['Subject'] = Header('🎮 AI 游戏资讯周报', 'utf-8')
 
     try:
-        # 使用更通用的 SMTP 方法替代 SMTP_SSL，手动开启 TLS 加密
-        server = smtplib.SMTP("smtp.qq.com", 587) 
-        server.starttls() # 这种方式在 GitHub 环境中更不容易被切断连接
+        # 核心改动：改用 587 端口并显式启动 TLS 
+        server = smtplib.SMTP("smtp.qq.com", 587, timeout=30)
+        server.set_debuglevel(1) # 这会在日志中显示详细的连接过程
+        server.starttls() 
         server.login(sender, password)
         server.sendmail(sender, [receiver], msg.as_string())
         server.quit()
         print("邮件发送成功！")
     except Exception as e:
-        print(f"发送失败: {e}")
+        print(f"发送失败详情: {e}")
 
     try:
         # QQ 邮箱 SMTP 服务器配置
