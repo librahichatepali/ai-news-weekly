@@ -37,19 +37,22 @@ def get_aggregated_news():
     return html_template
 
 def send_mail(content):
+    import ssl
     sender = os.environ.get('EMAIL_USER')
-    password = os.environ.get('EMAIL_PASS').strip()
+    # strip() 会自动删掉你粘贴时可能带入的不可见空格
+    password = os.environ.get('EMAIL_PASS').strip() 
     receiver = '249869251@qq.com'
-
+    
     msg = MIMEText(content, 'html', 'utf-8')
-    msg['From'] = f"News Bot <{sender}>"
+    msg['From'] = sender
     msg['To'] = receiver
     msg['Subject'] = Header('🎮 AI 游戏资讯周报', 'utf-8')
 
+    # 创建一个安全上下文，解决 GitHub 环境下的握手失败问题
+    context = ssl.create_default_context()
+    
     try:
-        # 显式建立 SSL 连接
-        import ssl
-        context = ssl.create_default_context()
+        # 使用 smtplib.SMTP_SSL 配合 465 端口
         with smtplib.SMTP_SSL("smtp.qq.com", 465, context=context) as server:
             server.login(sender, password)
             server.sendmail(sender, [receiver], msg.as_string())
