@@ -5,73 +5,67 @@ import time
 from email.mime.text import MIMEText
 from email.header import Header
 
-# 精选的小游戏行业深度信源
+# 【精选源】只保留高概率产出“小游戏”内容的垂直频道
 FEEDS = [
-    "https://www.gamelook.com.cn/category/mini-game/feed",  # GameLook小游戏专栏
-    "https://www.vrtuoluo.cn/feed",                        # 游戏陀螺（含大量小游戏趋势）
-    "https://www.youxichaguan.com/feed",                   # 游戏茶馆（小游戏榜单常客）
-    "https://www.thepaper.cn/rss_news.jsp?nodeid=25631"    # 澎湃新闻-游戏频道
+    "https://www.gamelook.com.cn/category/mini-game/feed",  # GameLook小游戏专栏（最精准）
+    "https://www.vrtuoluo.cn/category/news/feed",         # 游戏陀螺-行业新闻（虽然有杂讯，但榜单多）
+    "https://www.youxichaguan.com/feed"                    # 游戏茶馆
 ]
 
-# 核心情报过滤词：只提取包含这些词的资讯
-KEY_WORDS = [
-    "小游戏", "微信", "抖音", "排行榜", "榜单", "上升", 
-    "买量", "爆款", "题材", "转化", "分成", "IAA", "IAP"
-]
+# 【白名单】必须包含以下任意一个词，才会被收入邮件
+WHITE_LIST = ["小游戏", "微信", "抖音", "快手", "榜单", "排行榜", "买量", "爆款", "题材", "分成"]
+
+# 【黑名单】只要包含以下任意一个词，哪怕有“小游戏”也会被剔除（解决VR陀螺干扰）
+BLACK_LIST = ["VR", "AR", "XR", "元宇宙", "Meta", "头显", "Metaverse", "Apple Vision", "神经腕带"]
 
 def get_aggregated_news():
     full_content = """
-    <div style="max-width: 800px; margin: 0 auto; background-color: #f9f9f9; font-family: 'Microsoft YaHei', sans-serif; padding: 20px;">
+    <div style="max-width: 800px; margin: 0 auto; font-family: 'Microsoft YaHei', sans-serif;">
         <div style="background: #07C160; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;">
-            <h1 style="margin: 0; font-size: 24px;">🚀 小游戏题材 & 榜单趋势报告</h1>
-            <p style="margin: 5px 0 0; opacity: 0.9;">专注于微信、抖音小游戏行业洞察</p>
+            <h1 style="margin: 0; font-size: 22px;">🎯 纯净小游戏行业周报</h1>
+            <p style="margin: 5px 0 0; opacity: 0.8;">已自动过滤 VR/元宇宙等无关干扰</p>
         </div>
-        <div style="background: white; padding: 20px; border: 1px solid #eee; border-top: none; border-radius: 0 0 8px 8px;">
+        <div style="background: white; padding: 20px; border: 1px solid #eee; border-top: none;">
     """
     
     found_articles = []
     
     for url in FEEDS:
         try:
-            print(f"正在扫描: {url}")
             feed = feedparser.parse(url)
-            # 扩大扫描范围到每个源的前 25 条，确保不漏掉藏在后面的深度好文
-            for entry in feed.entries[:25]:
+            for entry in feed.entries[:30]: # 扩大扫描范围，提高打捞率
                 title = entry.title
                 summary = entry.get('summary', entry.get('description', ''))
+                combined_text = (title + summary).lower()
                 
-                # 关键词匹配逻辑
-                if any(word.lower() in title.lower() or word.lower() in summary.lower() for word in KEY_WORDS):
+                # 核心过滤逻辑：在白名单内 且 不在黑名单内
+                is_useful = any(word.lower() in combined_text for word in WHITE_LIST)
+                is_annoying = any(word.lower() in combined_text for word in BLACK_LIST)
+                
+                if is_useful and not is_annoying:
                     if title not in [a['title'] for a in found_articles]:
                         found_articles.append({
                             'title': title,
                             'link': entry.link,
-                            'summary': summary[:500] + "..." if len(summary) > 500 else summary,
-                            'source': feed.feed.get('title', '行业资讯')
+                            'summary': summary[:400] + "..." if len(summary) > 400 else summary,
+                            'source': feed.feed.get('title', '行业动态')
                         })
         except Exception as e:
-            print(f"解析 {url} 失败: {e}")
+            print(f"解析 {url} 出错: {e}")
 
     if not found_articles:
-        full_content += "<p style='text-align:center; color:#999; padding: 40px;'>今日暂未发现匹配小游戏题材的深度趋势。</p>"
+        full_content += "<p style='text-align:center; padding: 50px; color: #999;'>今日暂无匹配的纯净小游戏资讯。</p>"
     else:
         for art in found_articles:
             full_content += f"""
-            <div style="margin-bottom: 30px; padding: 15px; border-bottom: 1px solid #f0f0f0;">
-                <span style="background: #e1f5fe; color: #0288d1; font-size: 12px; padding: 2px 8px; border-radius: 10px;">{art['source']}</span>
-                <h3 style="margin: 10px 0;"><a href="{art['link']}" style="color: #333; text-decoration: none; font-size: 18px; line-height: 1.4;">{art['title']}</a></h3>
-                <div style="font-size: 14px; color: #555; line-height: 1.8;">{art['summary']}</div>
-                <div style="margin-top: 12px;"><a href="{art['link']}" style="color: #07C160; font-weight: bold; text-decoration: none;">查看题材详情 &raquo;</a></div>
+            <div style="margin-bottom: 25px; padding: 15px; border-left: 4px solid #07C160; background: #fcfcfc;">
+                <h3 style="margin: 0 0 10px 0;"><a href="{art['link']}" style="color: #333; text-decoration: none;">{art['title']}</a></h3>
+                <div style="font-size: 14px; color: #666; line-height: 1.7;">{art['summary']}</div>
+                <div style="margin-top: 10px; font-size: 12px; color: #999;">来源：{art['source']}</div>
             </div>
             """
 
-    full_content += f"""
-            <div style="text-align: center; color: #bbb; font-size: 12px; margin-top: 20px;">
-                报告生成时间：{time.strftime("%Y-%m-%d %H:%M")} | 总计发现 {len(found_articles)} 条匹配情报
-            </div>
-        </div>
-    </div>
-    """
+    full_content += "</div></div>"
     return full_content
 
 def send_mail(content):
@@ -80,20 +74,19 @@ def send_mail(content):
     receiver = '249869251@qq.com'
     
     msg = MIMEText(content, 'html', 'utf-8')
-    msg['From'] = f"TrendBot <{sender}>"
+    msg['From'] = f"SmallGameBot <{sender}>"
     msg['To'] = receiver
-    msg['Subject'] = Header(f'📊 小游戏情报: 题材趋势与榜单洞察 ({time.strftime("%m-%d")})', 'utf-8')
+    msg['Subject'] = Header(f'📊 小游戏垂直情报 ({time.strftime("%m-%d")})', 'utf-8')
 
     try:
-        # 使用 Gmail 稳定通道
         with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
             server.starttls()
             server.login(sender, password)
             server.sendmail(sender, [receiver], msg.as_string())
-        print("✅ 小游戏垂直情报发送成功！")
+        print("✅ 精准情报发送成功！")
     except Exception as e:
-        print(f"❌ 发送异常: {e}")
+        print(f"❌ 发送失败: {e}")
 
 if __name__ == "__main__":
-    news_html = get_aggregated_news()
-    send_mail(news_html)
+    news = get_aggregated_news()
+    send_mail(news)
