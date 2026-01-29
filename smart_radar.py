@@ -14,6 +14,7 @@ from email.header import Header
 # 修改后：从 GitHub Secrets 安全读取
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 RECIPIENT_EMAIL = "tanweilin1987@gmail.com"
+SENDER_EMAIL = os.environ.get('EMAIL_USER')  # 必须添加这一行
 SENDER_PASS = os.environ.get('EMAIL_PASS')
 
 # 监控目标：改为本地模拟访问的 URL
