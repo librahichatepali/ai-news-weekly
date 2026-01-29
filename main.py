@@ -6,38 +6,39 @@ from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.header import Header
 
-# 【多源打捞】既然 DataEye 官网难抓，我们抓取它的“深度合作伙伴”
+# 【最稳影子源】这些平台的 RSS 极少失效，且大量转载 DataEye 情报
 FEEDS = [
-    "http://www.sykong.com/feed",                          # 手游那点事（DataEye内容核心同步源）
-    "https://www.gamelook.com.cn/category/mini-game/feed",  # GameLook（小游戏题材权威）
-    "https://www.vrtuoluo.cn/category/mini-game/feed",     # 游戏陀螺（深度行业报告二创）
-    "https://www.youxichaguan.com/feed"                    # 游戏茶馆
+    "https://rsshub.app/sykong/news",                      # 手游那点事全量(包含大量DataEye数据)
+    "https://www.gamelook.com.cn/category/mini-game/feed",  # GameLook 精选
+    "https://www.vrtuoluo.cn/category/mini-game/feed",     # 游戏陀螺小游戏
+    "https://rsshub.app/xueqiu/user/stock/游戏",             # 雪球行业动态(备用打捞)
 ]
 
-# 【白名单】加入 "DataEye" 作为核心关键词，确保哪怕是转载也能被捞到
-WHITE_LIST = ["小游戏", "微信", "抖音", "DataEye", "榜单", "排行榜", "买量", "爆款", "题材"]
-BLACK_LIST = ["元宇宙", "盒马", "VR", "AR", "Vision Pro"]
+# 【白名单】加入对 "DataEye" 的强制打捞，只要合作伙伴提到它，我们就抓
+MUST_KEYWORDS = ["小游戏", "微信", "抖音", "榜单", "DataEye", "排行榜", "买量"]
+# 【黑名单】强制排除干扰项，解决“盒马”等杂讯
+IGNORE_WORDS = ["元宇宙", "盒马", "VR", "代工", "芯片", "Vision Pro"]
 
 def get_aggregated_news():
-    # 延长至 20 天，确保不漏掉 DataEye 产出的重磅周报或月报
-    cutoff = datetime.now() - timedelta(days=20)
+    # 增加回溯至 25 天，确保跨月的大榜单能被捞到
+    cutoff = datetime.now() - timedelta(days=25)
     
     full_content = """
-    <div style="max-width: 800px; margin: 0 auto; font-family: 'Microsoft YaHei', sans-serif;">
+    <div style="max-width: 800px; margin: 0 auto; font-family: 'Microsoft YaHei', sans-serif; background: #f9f9f9; padding: 15px;">
         <div style="background: #07C160; color: white; padding: 25px; text-align: center; border-radius: 12px 12px 0 0;">
-            <h1 style="margin: 0; font-size: 20px;">🛡️ 小游戏全网雷达 (含 DataEye 同步情报)</h1>
-            <p style="margin: 8px 0 0; opacity: 0.9; font-size: 14px;">已整合 手游那点事、GameLook 等核心数据源</p>
+            <h1 style="margin: 0; font-size: 20px;">🛡️ 小游戏·DataEye 深度情报打捞</h1>
+            <p style="margin: 5px 0 0; opacity: 0.8; font-size: 13px;">回溯合作伙伴情报，直击行业核心榜单</p>
         </div>
-        <div style="background: white; padding: 20px; border: 1px solid #e0e0e0; border-top: none;">
+        <div style="background: white; padding: 20px; border: 1px solid #ddd; border-top: none; border-radius: 0 0 12px 12px;">
     """
     
-    found_items = []
+    found_articles = []
 
     for url in FEEDS:
         try:
-            # 增加对源的解析深度
             feed = feedparser.parse(url)
-            for entry in feed.entries[:60]:
+            # 提高检索深度到 80 条
+            for entry in feed.entries[:80]:
                 pub_time = None
                 if hasattr(entry, 'published_parsed'):
                     pub_time = datetime(*entry.published_parsed[:6])
@@ -46,34 +47,43 @@ def get_aggregated_news():
 
                 title = entry.title
                 summary = entry.get('summary', entry.get('description', ''))
-                combined = (title + summary).lower()
+                combined_text = (title + summary).lower()
                 
-                # 逻辑：只要标题或正文提到 DataEye 或 核心词
-                is_hit = any(word.lower() in combined for word in WHITE_LIST)
-                is_bad = any(word.lower() in combined for word in BLACK_LIST)
+                # 检查是否包含核心硬词，且没有垃圾干扰
+                contains_valuable = any(w.lower() in combined_text for w in MUST_KEYWORDS)
+                is_irrelevant = any(w.lower() in combined_text for w in IGNORE_WORDS)
                 
-                if is_hit and not is_bad:
-                    if title not in [a['title'] for a in found_items]:
-                        found_items.append({
+                if contains_valuable and not is_irrelevant:
+                    if title not in [a['title'] for a in found_articles]:
+                        found_articles.append({
                             'title': title,
                             'link': entry.link,
-                            'summary': summary[:450],
-                            'date': pub_time.strftime("%m-%d") if pub_time else "近期",
-                            'source': f"{feed.feed.get('title', '垂直渠道')}"
+                            'summary': summary[:450] + "...",
+                            'source': f"{feed.feed.get('title', '垂直渠道')} ({pub_time.strftime('%m-%d') if pub_time else '近期'})"
                         })
-        except Exception: continue
+        except: continue
 
-    if not found_items:
-        full_content += "<p style='text-align:center; padding: 50px; color: #999;'>🔍 近 20 天内暂无匹配的小游戏或 DataEye 相关情报。</p>"
+    if not found_articles:
+        full_content += """
+        <div style="text-align:center; padding: 50px; color: #888;">
+            <p>🔍 影子库暂无匹配，建议查看以下直达链接（已修复）：</p>
+            <div style="margin-top: 15px;">
+                <a href="https://www.dataeye.com/report" style="color:#07C160;">🔗 DataEye 行业月报</a> | 
+                <a href="https://www.aldzs.com/toplist" style="color:#07C160;">🔗 阿拉丁微信指数</a>
+            </div>
+        </div>
+        """
     else:
-        for art in found_items:
-            # 高亮显示包含 DataEye 的资讯
-            highlight = "border-left: 5px solid #FFD700; background: #FFFDF0;" if "DataEye" in art['title'] or "DataEye" in art['summary'] else "border-left: 5px solid #07C160; background: #fcfcfc;"
+        for art in found_articles:
+            # 高亮包含 DataEye 的重磅情报
+            is_dataeye = "DataEye" in art['title'] or "DataEye" in art['summary']
+            style = "border-left: 5px solid #FFD700; background: #FFFEEA;" if is_dataeye else "border-left: 5px solid #07C160; background: #F8FCF9;"
+            
             full_content += f"""
-            <div style="margin-bottom: 25px; padding: 15px; {highlight} border-radius: 4px;">
-                <h3 style="margin: 0 0 10px 0;"><a href="{art['link']}" style="color: #333; text-decoration: none;">{art['title']}</a></h3>
-                <div style="font-size: 14px; color: #444; line-height: 1.6;">{art['summary']}</div>
-                <div style="margin-top: 10px; font-size: 11px; color: #999;">📅 {art['date']} | 📍 {art['source']}</div>
+            <div style="margin-bottom: 20px; padding: 15px; {style} border-radius: 6px;">
+                <h3 style="margin: 0 0 8px 0;"><a href="{art['link']}" style="color: #333; text-decoration: none;">{'[重磅] ' if is_dataeye else ''}{art['title']}</a></h3>
+                <div style="font-size: 13px; color: #555; line-height: 1.6;">{art['summary']}</div>
+                <div style="margin-top: 10px; font-size: 11px; color: #999;">📍 来自：{art['source']}</div>
             </div>
             """
 
@@ -87,15 +97,15 @@ def send_mail(content):
     msg = MIMEText(content, 'html', 'utf-8')
     msg['From'] = f"SmallGameBot <{sender}>"
     msg['To'] = receiver
-    msg['Subject'] = Header(f'📊 小游戏情报 & DataEye 趋势 - {time.strftime("%m-%d")}', 'utf-8')
+    msg['Subject'] = Header(f'📊 小游戏情报打捞 - {time.strftime("%m-%d")}', 'utf-8')
     try:
         with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
             server.starttls()
             server.login(sender, password)
             server.sendmail(sender, [receiver], msg.as_string())
-        print("✅ 专报发送成功！")
+        print("✅ 发送成功！")
     except Exception as e: print(f"❌ 发送失败: {e}")
 
 if __name__ == "__main__":
-    news = get_aggregated_news()
-    send_mail(news)
+    news_html = get_aggregated_news()
+    send_mail(news_html)
