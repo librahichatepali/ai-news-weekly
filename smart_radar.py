@@ -8,9 +8,12 @@ from email.mime.text import MIMEText
 from email.header import Header
 
 # --- 1. 配置区域 ---
-GEMINI_API_KEY = "AIzaSyCulCezozZX0MyjLMfDi7RM53VXZnSWk5c"  # 填入申请的 Key
+# 修改前：直接写字符串
+# GEMINI_API_KEY = "AIza..." 
+
+# 修改后：从 GitHub Secrets 安全读取
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 RECIPIENT_EMAIL = "tanweilin1987@gmail.com"
-SENDER_EMAIL = os.environ.get('EMAIL_USER')
 SENDER_PASS = os.environ.get('EMAIL_PASS')
 
 # 监控目标：改为本地模拟访问的 URL
