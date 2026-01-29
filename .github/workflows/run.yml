@@ -5,14 +5,12 @@ on:
     branches:
       - main
   schedule:
-    # 每天北京时间早上 9 点自动运行 (UTC 1:00)
-    - cron: '0 1 * * *'
-  workflow_dispatch: # 允许你在 GitHub 页面手动点击运行
+    - cron: '0 1 * * *' # 每天早上运行
+  workflow_dispatch: # 允许你手动点击测试
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -27,9 +25,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4 google-generativeai
 
-      - name: Run Smart Radar
+      - name: Run AI Radar
         env:
-          # 从你的 Repository secrets 中读取配置
+          # 脚本将自动读取你配置好的 Secrets
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
