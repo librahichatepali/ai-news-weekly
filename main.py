@@ -46,7 +46,7 @@ def get_aggregated_news():
                 
                 # 清理冗余标签，保留换行
                 if len(desc) > 500:
-                    desc = desc[:500] + "..."
+                    desc = desc[:1000] + "..."
 
                 full_content += f"""
                 <div style="margin-bottom: 25px; padding: 15px; border-bottom: 1px dashed #eee;">
