@@ -106,4 +106,13 @@ if __name__ == "__main__":
             if "今日暂无重大更新" not in summary and len(summary) > 20:
                 safe_summary = summary.replace('\n', '<br>')
                 section = f"""
-                <div style="margin-bottom:25px;padding:20px;background:#f9f9
+                <div style="margin-bottom:25px;padding:20px;background:#f9f9f9;border-left:5px solid #1a73e8;">
+                    <b style="color:#1a73e8;font-size:16px;">📍 来源：{src['name']}</b><br>
+                    <div style="margin-top:10px;font-size:14px;color:#444;">{safe_summary}</div>
+                </div>
+                """
+                results.append(section)
+        except Exception as e:
+            print(f"跳过 {src['name']}: {e}")
+            
+    send_mail(results)
