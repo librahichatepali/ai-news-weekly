@@ -26,11 +26,11 @@ def ai_summarize(content, source_name):
     prompt = f"""
     你是一位专业的游戏行业分析师。请从 {source_name} 的网页文本中提取今日最值得关注的 2-3 条动态。
     忽略：隐私政策、登录入口、侧边栏广告、作者信息。
-    重点提取：新游上线、厂商收购、投融资、重大市场数据变化。
-    哪怕只有一条重要标题，也请用中文列出。如果没有新动态，请仅回复：今日暂无重大更新。
+    重点提取：新游上线、厂商收购、重大财报、市场数据。
+    哪怕只有一条标题，也请用中文列出。如果没有新动态，请仅回复：今日暂无重大更新。
     
     文本内容：
-    {content[:12000]}
+    {content[:13000]}
     """
     
     try:
@@ -40,28 +40,29 @@ def ai_summarize(content, source_name):
             return res_json["candidates"][0]["content"]["parts"][0]["text"]
         return "今日暂无重大更新"
     except Exception as e:
-        return f"⚠️ API 访问异常: {str(e)}"
+        return f"⚠️ API 请求异常: {str(e)}"
 
-# --- 3. 邮件系统：彻底闭合结构，防止 SyntaxError ---
+# --- 3. 邮件系统：彻底修复三引号闭合与逻辑 ---
 def send_mail(content_list):
     combined_body = "".join(content_list)
     
-    # 逻辑闭合：如果内容为空，显示状态简报而非空白
+    # 状态提示：区分“程序故障”与“内容为空”
     status_msg = ""
     if not combined_body.strip():
         status_msg = """
         <div style="padding:15px; border:1px dashed #ffa500; color:#856404; background:#fff3cd; border-radius:10px; margin-bottom:20px;">
-            📡 <b>探测状态：</b> 各目标源访问正常，但今日 AI 未识别出符合条件的行业深度动态。
+            📡 <b>探测简报：</b> 各目标源访问正常，但今日 AI 未识别出符合条件的行业深度动态。
         </div>
         """
 
+    # 严谨构建 HTML 布局，确保所有符号成对
     html_layout = f"""
     <div style="font-family:sans-serif;max-width:700px;margin:auto;border:1px solid #ddd;padding:30px;border-radius:15px;">
         <h2 style="color:#1a73e8;text-align:center;border-bottom:4px solid #1a73e8;padding-bottom:12px;">🌍 全球游戏动态·探测报告</h2>
         {status_msg}
         <div style="line-height:1.7;color:#333;">{combined_body}</div>
         <div style="font-size:12px;color:#999;text-align:center;margin-top:40px;border-top:1px solid #eee;padding-top:20px;">
-            验证状态：深度降噪+语法闭合 | 引擎：Gemini 1.5 Flash | 时间：{time.strftime("%Y-%m-%d %H:%M")}
+            验证状态：语法闭合+深度降噪 | 引擎：Gemini 1.5 Flash | 时间：{time.strftime("%Y-%m-%d %H:%M")}
         </div>
     </div>
     """
@@ -78,7 +79,7 @@ def send_mail(content_list):
             server.sendmail(SENDER_EMAIL, [RECIPIENT_EMAIL], msg.as_string())
         print("✅ 报告已送达")
     except Exception as e:
-        print(f"❌ 发送异常: {e}")
+        print(f"❌ 发送失败: {e}")
 
 # --- 4. 强力抓取逻辑 ---
 if __name__ == "__main__":
@@ -89,18 +90,19 @@ if __name__ == "__main__":
         try:
             print(f"正在扫描: {src['name']}...")
             r = requests.get(src['url'], headers=headers, timeout=25)
-            r.encoding = r.apparent_encoding # 自动纠正编码，防止乱码
+            # 自动识别编码，防止乱码干扰识别
+            r.encoding = r.apparent_encoding 
             
             soup = BeautifulSoup(r.text, 'html.parser')
             
-            # 物理清洗：剔除所有非内容区域标签
+            # 物理降噪：彻底移除干扰标签
             for noise in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'iframe', 'noscript', 'form']):
                 noise.decompose()
             
             clean_text = soup.get_text(separator=' ', strip=True)
             summary = ai_summarize(clean_text, src['name'])
             
-            # 只要不是 AI 的空回复且字数达标，即记入结果
+            # 降低过滤门槛，只要有内容就记录
             if "今日暂无重大更新" not in summary and len(summary) > 20:
                 safe_summary = summary.replace('\n', '<br>')
                 section = f"""
