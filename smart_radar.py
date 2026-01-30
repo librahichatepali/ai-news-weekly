@@ -18,21 +18,21 @@ TARGET_SOURCES = [
     {"name": "MobileGamer.biz", "url": "https://mobilegamer.biz/news/"}
 ]
 
-# --- 2. AI 核心：注入来源信息，提高嗅觉 ---
+# --- 2. AI 引擎：增强容错与提取精度 ---
 def ai_summarize(content, source_name):
     if not GEMINI_API_KEY: return "❌ 错误：未配置 Key"
-    
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
+    # 优化 Prompt：允许 AI 提取单条简短动态，降低“无更新”的误判率
     prompt = f"""
-    你是一位资深移动游戏行业专家。下面是来自 {source_name} 的网页文本。
-    任务：
-    1. 忽略所有 Cookie 政策、登录、广告和导航文本。
-    2. 提取最近 24 小时内的核心游戏行业动态（如新游上线、收购、市场趋势）。
-    3. 哪怕只有一条重要标题，也请用中文列出。
-    4. 如果真的没有新动态，请仅回复：今日暂无重大更新。
+    你是一位专业的游戏行业分析师。请从 {source_name} 的网页文本中提取今日核心动态。
+    要求：
+    - 忽略：隐私条款、登录入口、侧边栏广告、作者信息。
+    - 重点：提取新游上线、厂商收购、重大财报、市场数据。
+    - 哪怕只有一条关键标题，也请用中文列出。
+    - 如果确定没有新动态，请仅回复：今日暂无重大更新。
     
-    待处理文本：
+    文本内容：
     {content[:13000]}
     """
     
@@ -45,11 +45,11 @@ def ai_summarize(content, source_name):
     except Exception as e:
         return f"⚠️ API 调用失败: {str(e)}"
 
-# --- 3. 邮件系统：彻底闭合结构，防止 SyntaxError ---
+# --- 3. 邮件系统：彻底闭合结构，防止脚本崩溃 ---
 def send_mail(content_list):
     combined_body = "".join(content_list)
     
-    # 逻辑闭合：如果内容为空，显示状态简报
+    # 状态透明化：如果内容为空，显示状态简报
     if not combined_body.strip():
         combined_body = "<p style='color:#666;'>📡 今日各源暂无深度更新，探测器运行正常。</p>"
 
@@ -66,18 +66,18 @@ def send_mail(content_list):
     msg = MIMEText(html_layout, 'html', 'utf-8')
     msg['From'] = f"SmartRadar <{SENDER_EMAIL}>"
     msg['To'] = RECIPIENT_EMAIL
-    msg['Subject'] = Header(f"📊 趋势探测报告 - {time.strftime('%m-%d')}", 'utf-8')
+    msg['Subject'] = Header(f"📊 探测报告 - {time.strftime('%m-%d')}", 'utf-8')
     
     try:
         with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
             server.starttls()
             server.login(SENDER_EMAIL, SENDER_PASS)
             server.sendmail(SENDER_EMAIL, [RECIPIENT_EMAIL], msg.as_string())
-        print("✅ 报告送达")
+        print("✅ 报告已送达")
     except Exception as e:
         print(f"❌ 发送失败: {e}")
 
-# --- 4. 强力提取逻辑 ---
+# --- 4. 强力抓取逻辑 ---
 if __name__ == "__main__":
     results = []
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
@@ -86,18 +86,19 @@ if __name__ == "__main__":
         try:
             print(f"正在扫描: {src['name']}...")
             r = requests.get(src['url'], headers=headers, timeout=25)
-            r.encoding = r.apparent_encoding # 自动纠正编码，防止乱码
+            r.encoding = r.apparent_encoding # 自动纠正编码，防止乱码干扰 AI
             soup = BeautifulSoup(r.text, 'html.parser')
             
-            # 精准摘除：剔除所有交互和降级内容
+            # 精准降噪：物理剔除所有交互和非新闻区域
             for noise in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'iframe', 'noscript', 'form']):
                 noise.decompose()
             
             clean_text = soup.get_text(separator=' ', strip=True)
             summary = ai_summarize(clean_text, src['name'])
             
-            # 降低过滤门槛，确保 AI 的努力不被轻易忽略
-            if "今日暂无重大更新" not in summary and len(summary) > 20:
+            # 只要不是完全没有实质内容的“无更新”回复，就记入结果
+            if "今日暂无重大更新" not in summary and len(summary) > 25:
+                # 处理换行以适配邮件 HTML
                 safe_summary = summary.replace('\n', '<br>')
                 section = f"""
                 <div style="margin-bottom:25px;padding:20px;background:#f9f9f9;border-left:5px solid #1a73e8;">
