@@ -6,26 +6,28 @@ import smtplib
 from email.mime.text import MIMEText
 from email.header import Header
 
-# --- 1. 配置 ---
+# --- 1. 核心配置 ---
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 RECIPIENT_EMAIL = "tanweilin1987@gmail.com"
 SENDER_EMAIL = os.environ.get('EMAIL_USER')
 SENDER_PASS = os.environ.get('EMAIL_PASS')
 
-# 选用最具“抗封锁性”的源，直接抓取主页 HTML
+# 保持当前运行最稳的源
 TARGET_SOURCES = [
     {"name": "GameLook", "url": "http://www.gamelook.com.cn/"},
     {"name": "Pocket Gamer", "url": "https://www.pocketgamer.biz/"}
 ]
 
-# --- 2. 深度 AI 探测：强制关闭所有过滤器 ---
+# --- 2. 升级版 AI 逻辑：纯粹翻译模式 ---
 def ai_summarize(content, source_name):
     if not GEMINI_API_KEY: return None
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
-    # 终极 Prompt：禁止拒绝，必须输出
+    # 采用更中性的 Prompt，减少 AI 判定的“主观风险”
+    prompt = f"请将以下{source_name}的新闻标题翻译成简洁的中文摘要，每条一行：\n{content}"
+    
     payload = {
-        "contents": [{"parts": [{"text": f"强制任务：将以下{source_name}的新闻标题翻译成中文。严禁说没内容。必须列出4条。\n内容：{content}"}]}],
+        "contents": [{"parts": [{"text": prompt}]}],
         "safetySettings": [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -43,62 +45,62 @@ def ai_summarize(content, source_name):
         pass
     return None
 
-# --- 3. 稳健邮件函数：增加“原始数据”备份 ---
-def send_mail(sections, raw_logs):
-    # 如果 AI 没产出，就展示原始抓取的 Log
-    content = "".join(sections) if sections else f"<h3>⚠️ 诊断：AI 罢工</h3><p>{raw_logs}</p>"
+# --- 3. 稳健邮件发送 ---
+def send_mail(sections, debug_log):
+    # 优先展示翻译内容，若 AI 失败则自动切换为原始标题备份
+    content = "".join(sections) if sections else f"<p>调试信息: {debug_log}</p>"
     
     html_layout = f"""
-    <div style="font-family:sans-serif; padding:20px; border:1px solid #ddd;">
-        <h2 style="color:#1a73e8;">🛰️ 情报雷达·生存探测版</h2>
+    <div style="font-family:sans-serif; padding:20px; border:1px solid #ddd; border-radius:10px;">
+        <h2 style="color:#1a73e8; border-bottom:2px solid #1a73e8; padding-bottom:8px;">📊 每日情报·小游戏雷达</h2>
         {content}
-        <p style="font-size:12px; color:#aaa; margin-top:20px;">状态: 全隔离测试 | 时间: {time.strftime("%Y-%m-%d %H:%M")}</p>
+        <hr style="border:0; border-top:1px solid #eee; margin-top:20px;">
+        <p style="font-size:11px; color:#aaa; text-align:center;">状态: AI+原始备份模式 | 时间: {time.strftime("%Y-%m-%d %H:%M")}</p>
     </div>
     """
     
     msg = MIMEText(html_layout, 'html', 'utf-8')
     msg['From'] = f"SmartRadar <{SENDER_EMAIL}>"
     msg['To'] = RECIPIENT_EMAIL
-    msg['Subject'] = Header(f"🎮 情报雷达存活报告 - {time.strftime('%m-%d')}", 'utf-8')
+    msg['Subject'] = Header(f"🎮 市场动态简报 - {time.strftime('%m-%d')}", 'utf-8')
     
     try:
         with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
             server.starttls()
             server.login(SENDER_EMAIL, SENDER_PASS)
             server.sendmail(SENDER_EMAIL, [RECIPIENT_EMAIL], msg.as_string())
-        print("✅ 邮件已发出")
+        print("✅ 报告已送达")
     except Exception as e:
-        print(f"❌ 发送失败: {e}")
+        print(f"❌ 邮件发送异常: {e}")
 
 # --- 4. 主逻辑 ---
 if __name__ == "__main__":
     final_sections = []
-    debug_info = ""
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/115.0.0.0'}
+    log_info = ""
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
     for src in TARGET_SOURCES:
         try:
-            print(f"📡 探测: {src['name']}...")
             r = requests.get(src['url'], headers=headers, timeout=20)
-            if r.status_code != 200:
-                debug_info += f"[{src['name']} 状态 {r.status_code}] "
-                continue
+            if r.status_code != 200: continue
             
-            # 使用内置解析器，避开缺少 tree builder 的报错
             soup = BeautifulSoup(r.text, 'html.parser')
-            titles = [t.text.strip() for t in soup.find_all(['h2', 'h3'])[:10] if len(t.text.strip()) > 5]
+            # 抓取逻辑增强：仅抓取有实质内容的标题
+            titles = [t.text.strip() for t in soup.find_all(['h2', 'h3'])[:12] if len(t.text.strip()) > 8]
             
             if titles:
-                raw_text = "\n".join(titles)
-                summary = ai_summarize(raw_text, src['name'])
+                summary = ai_summarize("\n".join(titles), src['name'])
                 
-                # 如果 AI 成功翻译了，用翻译；否则用原始标题
-                display_text = summary.replace('\n', '<br>') if summary else "AI 响应异常，以下为原始标题：<br>" + "<br>".join(titles)
-                # 避开 f-string 反斜杠坑
-                final_sections.append("<h3>📍 " + src['name'] + "</h3><div style='font-size:14px;'>" + display_text + "</div>")
-            else:
-                debug_info += f"[{src['name']} 未解析到内容] "
+                # 若翻译成功则格式化，否则展示原始列表并标注
+                if summary:
+                    body_text = summary.replace('\n', '<br>')
+                else:
+                    body_text = "<span style='color:#e67e22;'>AI 响应超时，展示原始列表：</span><br>" + "<br>".join(titles)
+                
+                # 修复 f-string 语法问题
+                section_html = "<h3>📍 " + src['name'] + "</h3><div style='line-height:1.6; color:#444;'>" + body_text + "</div>"
+                final_sections.append(section_html)
         except Exception as e:
-            debug_info += f"[{src['name']} 报错: {str(e)[:20]}] "
+            log_info += f"[{src['name']} 错误] "
 
-    send_mail(final_sections, debug_info if debug_info else "未发现抓取异常")
+    send_mail(final_sections, log_info)
