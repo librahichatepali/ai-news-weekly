@@ -18,18 +18,18 @@ TARGET_SOURCES = [
     {"name": "GameRefinery (市场趋势)", "url": "https://www.gamerefinery.com/feed/"}
 ]
 
-# --- 2. AI 核心：不再挑选内容，强制全量翻译 ---
+# --- 2. AI 核心：强制全量翻译，拒绝判定“无意义” ---
 def ai_summarize(content, source_name):
     if not GEMINI_API_KEY: return ""
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
-    # 修改指令：禁止 AI 判定是否有价值，只要有数据就翻译
+    # 修改指令：要求 AI 必须翻译，不得跳过
     prompt = f"""
-    任务：你是一个专业游戏情报员。请将来自 {source_name} 的新闻标题翻译成中文。
+    任务：你是一个专业游戏翻译。请将来自 {source_name} 的新闻标题翻译成中文。
     要求：
     1. 简洁直接，按序号排列翻译后的列表。
     2. 哪怕新闻很简短，也要列出翻译内容。
-    3. 不得判定“无价值”，不得回复“今日无更新”。
+    3. 严禁回复“今日无更新”或“无价值”，必须输出中文翻译结果。
     
     待处理数据：
     {content}
@@ -44,13 +44,13 @@ def ai_summarize(content, source_name):
     except:
         return ""
 
-# --- 3. 邮件发送系统：彻底修复保底变量 ---
+# --- 3. 邮件发送：修正变量拼写报错 ---
 def send_mail(content_list, backup_titles):
     ai_output = "".join(content_list).strip()
     
-    # 物理保底逻辑：即使 AI 接口失败，也确保显示原始标题
+    # 物理保底逻辑：即使 AI 失败，也确保显示原始标题
     if not ai_output:
-        # 使用列表生成式构建保底列表，修正 image_9ab91c 中的变量报错
+        # 这里使用了正确的变量名 backup_titles，解决了 image_9ab91c 中的 NameError
         backup_html = "<ul>" + "".join([f"<li>{t}</li>" for t in backup_titles]) + "</ul>"
         main_body = f"""
         <div style="padding:15px; background:#fff3cd; color:#856404; border-radius:8px; border:1px solid #ffeeba;">
@@ -65,7 +65,7 @@ def send_mail(content_list, backup_titles):
         <h2 style="color:#1a73e8; text-align:center; border-bottom:2px solid #1a73e8; padding-bottom:10px;">🎮 全球游戏·雷达报告</h2>
         <div style="line-height:1.8; color:#333;">{main_body}</div>
         <div style="font-size:12px; color:#aaa; text-align:center; margin-top:30px; border-top:1px solid #f0f0f0; padding-top:15px;">
-            引擎: Gemini 1.5 Flash | 模式: 强力播报 | 时间: {time.strftime("%Y-%m-%d %H:%M")}
+            引擎: Gemini 1.5 Flash | 模式: 强力翻译 | 时间: {time.strftime("%Y-%m-%d %H:%M")}
         </div>
     </div>
     """
@@ -80,14 +80,14 @@ def send_mail(content_list, backup_titles):
             server.starttls()
             server.login(SENDER_EMAIL, SENDER_PASS)
             server.sendmail(SENDER_EMAIL, [RECIPIENT_EMAIL], msg.as_string())
-        print("✅ 邮件已成功发出")
+        print("✅ 邮件已发送")
     except Exception as e:
         print(f"❌ 邮件发送失败: {e}")
 
-# --- 4. 运行逻辑：解决变量定义报错 ---
+# --- 4. 运行主逻辑 ---
 if __name__ == "__main__":
     final_results = []
-    all_captured_titles = [] # 修正变量定义，解决 NameError
+    all_captured_titles = [] # 明确定义完整变量名，修正 NameError
     
     for src in TARGET_SOURCES:
         try:
@@ -105,7 +105,6 @@ if __name__ == "__main__":
             if raw_text:
                 summary = ai_summarize(raw_text, src['name'])
                 if summary:
-                    # 将换行符转换为 HTML 标签
                     safe_summary = summary.replace('\n', '<br>')
                     section = f"""
                     <div style="margin-bottom:20px; padding:15px; background:#f8f9fa; border-left:5px solid #1a73e8;">
