@@ -95,4 +95,34 @@ def send_mail(content_list, backup_titles):
 # --- 4. 运行逻辑 ---
 if __name__ == "__main__":
     final_results = []
-    all
+    all_captured_titles = [] # 修正变量定义，防止 NameError
+    
+    for src in TARGET_SOURCES:
+        try:
+            print(f"📡 抓取: {src['name']}...")
+            r = requests.get(src['url'], timeout=20)
+            soup = BeautifulSoup(r.text, 'xml')
+            items = soup.find_all('item')[:6] # 每次取前6条最新资讯
+            
+            raw_text = ""
+            for it in items:
+                title = it.find('title').text
+                all_captured_titles.append(f"[{src['name']}] {title}")
+                raw_text += f"- {title}\n"
+            
+            if raw_text:
+                summary = ai_summarize(raw_text, src['name'])
+                if summary:
+                    # 转换换行符确保 HTML 渲染正常
+                    safe_summary = summary.replace('\n', '<br>')
+                    section = f"""
+                    <div style="margin-bottom:20px; padding:15px; background:#f8f9fa; border-left:5px solid #1a73e8;">
+                        <b style="color:#1a73e8;">📍 {src['name']}</b><br>
+                        <div style="margin-top:8px; font-size:14px;">{safe_summary}</div>
+                    </div>
+                    """
+                    final_results.append(section)
+        except Exception as e:
+            print(f"⚠️ {src['name']} 异常: {e}")
+            
+    send_mail(final_results, all_captured_titles)
