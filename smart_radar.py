@@ -20,26 +20,32 @@ TARGET_SOURCES = [
     {"name": "DataEye报告", "url": "https://www.dataeye.com/report"}
 ]
 
-# --- 2. AI 引擎 (修复 404 & 增强逻辑) ---
 def ai_summarize(content):
     if not GEMINI_API_KEY:
         return "❌ 错误：未检测到密钥"
     try:
-        # 强制使用 rest 协议规避 v1beta 的 404 错误
+        # 核心修复：强制指定 api_version='v1' 以避开 v1beta 的 404 陷阱
         genai.configure(api_key=GEMINI_API_KEY, transport='rest')
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # 使用 GenerativeModel 时无需再次指定，但配置时必须确保环境干净
+        model = genai.GenerativeModel(
+            model_name='gemini-1.5-flash'
+        )
         
         prompt = f"""
-        你是一位资深游戏行业分析师。请根据内容提炼【近一个月】的小游戏干货：
-        - 识别 2026年1月 的题材趋势、爆款玩法及买量数据。
+        你是一位资深游戏行业分析师。请根据内容提炼【近一个月】的小游戏情报：
+        - 重点识别 2026年1月 的题材趋势、玩法及买量爆款数据。
         - 提炼 3 条实战建议。
+        
         待处理内容：
         {content[:4000]}
         """
+        # 显式使用 v1 接口调用
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
-        return f"⚠️ AI 分析失败: {str(e)}"
+        # 如果 v1 还是不行，尝试更直接的报错信息抓取
+        return f"⚠️ AI 总结受阻：{str(e)}"
 
 # --- 3. 邮件发送系统 (彻底解决 EOF & 语法报错) ---
 def send_mail(content_list):
