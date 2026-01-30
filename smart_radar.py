@@ -14,24 +14,24 @@ SENDER_PASS = os.environ.get('EMAIL_PASS')
 
 TARGET_SOURCES = [
     {"name": "Pocket Gamer (移动游戏)", "url": "https://www.pocketgamer.biz/feed/"},
-    {"name": "MobileGamer.biz (行业专栏)", "url": "https://mobilegamer.biz/feed/"},
+    {"name": "MobileGamer.biz (深度专栏)", "url": "https://mobilegamer.biz/feed/"},
     {"name": "GameRefinery (市场趋势)", "url": "https://www.gamerefinery.com/feed/"}
 ]
 
-# --- 2. AI 核心：不再进行“价值判定”，改为“强制翻译” ---
+# --- 2. AI 核心：不再进行“价值判定”，改为“全量翻译” ---
 def ai_summarize(content, source_name):
     if not GEMINI_API_KEY: return ""
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
-    # 修改 Prompt：禁止 AI 判定“是否有价值”，强制翻译列表
+    # 修改后的 Prompt：禁止 AI 判定“是否有价值”，强制翻译所有内容
     prompt = f"""
-    任务：你是一个专业游戏翻译。请将来自 {source_name} 的新闻标题翻译成中文。
+    任务：你是一个专业的游戏情报员。请将来自 {source_name} 的新闻标题翻译成中文。
     要求：
     1. 简洁直接，按序号排列翻译后的列表。
-    2. 只要有输入，就必须输出翻译内容，不得回复“无重大更新”。
-    3. 不要包含任何自我介绍或结束语。
+    2. 哪怕新闻很简短，也要列出翻译内容。
+    3. 不得回复“今日无重大更新”或“暂无内容”。
     
-    待翻译列表：
+    待处理列表：
     {content}
     """
     
@@ -50,11 +50,10 @@ def send_mail(content_list, backup_titles):
     
     # 物理保底逻辑：即便 AI 接口失败，也确保显示抓取到的原始标题
     if not ai_output:
-        # 使用修正后的变量名 all_captured_titles，解决 NameError
         backup_html = "<ul>" + "".join([f"<li>{t}</li>" for t in backup_titles]) + "</ul>"
         main_body = f"""
         <div style="padding:15px; background:#fff3cd; color:#856404; border-radius:8px; border:1px solid #ffeeba;">
-            ⚠️ AI 今日未输出摘要，以下为为您抓取的原始标题列表：<br>{backup_html}
+            ⚠️ AI 判定今日无深度资讯，以下为系统为您直接抓取的原始标题列表：<br>{backup_html}
         </div>
         """
     else:
@@ -84,10 +83,10 @@ def send_mail(content_list, backup_titles):
     except Exception as e:
         print(f"❌ 邮件发送失败: {e}")
 
-# --- 4. 运行逻辑：解决变量定义报错 ---
+# --- 4. 运行逻辑：解决变量名错误与语法截断 ---
 if __name__ == "__main__":
     final_results = []
-    all_captured_titles = [] # 修正变量名定义
+    all_captured_titles = [] # 修正变量名，解决 NameError
     
     for src in TARGET_SOURCES:
         try:
@@ -105,7 +104,7 @@ if __name__ == "__main__":
             if raw_text:
                 summary = ai_summarize(raw_text, src['name'])
                 if summary:
-                    # 预处理换行符，规避 HTML 渲染冲突
+                    # 将换行符提前转换，规避 f-string 中的语法限制
                     safe_summary = summary.replace('\n', '<br>')
                     section = f"""
                     <div style="margin-bottom:20px; padding:15px; background:#f8f9fa; border-left:5px solid #1a73e8;">
