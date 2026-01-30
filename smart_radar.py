@@ -12,14 +12,14 @@ RECIPIENT_EMAIL = "tanweilin1987@gmail.com"
 SENDER_EMAIL = os.environ.get('EMAIL_USER')
 SENDER_PASS = os.environ.get('EMAIL_PASS')
 
-# 改用 RSS 源：格式统一、无广告噪音
+# 改用 RSS 源：格式统一、无广告、无 Cookie 干扰
 TARGET_SOURCES = [
     {"name": "Pocket Gamer RSS", "url": "https://www.pocketgamer.biz/feed/"},
     {"name": "MobileGamer.biz RSS", "url": "https://mobilegamer.biz/feed/"},
     {"name": "GameRefinery Blog", "url": "https://www.gamerefinery.com/feed/"}
 ]
 
-# --- 2. AI 核心：提高灵敏度 ---
+# --- 2. AI 核心：注入来源 Context ---
 def ai_summarize(content, source_name):
     if not GEMINI_API_KEY: return "❌ 错误：未配置 Key"
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
@@ -27,11 +27,11 @@ def ai_summarize(content, source_name):
     prompt = f"""
     作为专业的游戏行业分析师，请从以下来自 {source_name} 的新闻列表中，挑选出今日最值得关注的 3 条动态。
     要求：
-    - 如果有新游测试、厂商动态、收购、或市场数据，请优先列出。
+    - 优先选择：新游上线/测试、厂商收购、投融资、重大市场数据。
     - 用中文简明扼要地总结。
-    - 如果没有新闻内容，请回复：今日暂无重大更新。
+    - 如果没有实质新闻内容，请回复：今日暂无重大更新。
     
-    新闻列表原文：
+    新闻列表：
     {content[:15000]}
     """
     
@@ -44,10 +44,12 @@ def ai_summarize(content, source_name):
     except Exception:
         return "⚠️ AI 响应超时"
 
-# --- 3. 邮件发送系统 ---
+# --- 3. 邮件系统：确保语法结构闭合 ---
 def send_mail(content_list):
     combined_body = "".join(content_list)
     status_msg = ""
+    
+    # 状态可视化：区分“代码故障”与“内容为空”
     if not combined_body.strip():
         status_msg = """
         <div style="padding:15px; border:1px dashed #ffa500; color:#856404; background:#fff3cd; border-radius:10px; margin-bottom:20px;">
@@ -61,7 +63,7 @@ def send_mail(content_list):
         {status_msg}
         <div style="line-height:1.7;color:#333;">{combined_body}</div>
         <div style="font-size:12px;color:#999;text-align:center;margin-top:40px;border-top:1px solid #eee;padding-top:20px;">
-            验证状态：RSS 数据源 | 引擎：Gemini 1.5 Flash | 时间：{time.strftime("%Y-%m-%d %H:%M")}
+            验证状态：RSS 模式 | 引擎：Gemini 1.5 Flash | 时间：{time.strftime("%Y-%m-%d %H:%M")}
         </div>
     </div>
     """
@@ -76,9 +78,9 @@ def send_mail(content_list):
             server.starttls()
             server.login(SENDER_EMAIL, SENDER_PASS)
             server.sendmail(SENDER_EMAIL, [RECIPIENT_EMAIL], msg.as_string())
-        print("✅ 邮件已发出")
+        print("✅ 探测报告已成功送达")
     except Exception as e:
-        print(f"❌ 邮件失败: {e}")
+        print(f"❌ 邮件发送异常: {e}")
 
 # --- 4. 执行流程 ---
 if __name__ == "__main__":
@@ -89,9 +91,8 @@ if __name__ == "__main__":
         try:
             print(f"正在扫描 RSS: {src['name']}...")
             r = requests.get(src['url'], headers=headers, timeout=20)
-            # RSS 这种 XML 结构极其稳定，不惧怕反爬
-            soup = BeautifulSoup(r.text, 'xml')
-            items = soup.find_all('item')[:10] # 只取最新的 10 条
+            soup = BeautifulSoup(r.text, 'xml') # RSS 使用 XML 解析
+            items = soup.find_all('item')[:10] 
             
             feed_content = ""
             for it in items:
