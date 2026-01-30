@@ -53,7 +53,7 @@ def send_mail(content_list, backup_titles):
         backup_html = "<ul>" + "".join([f"<li>{t}</li>" for t in backup_titles]) + "</ul>"
         main_body = f"""
         <div style="padding:15px; background:#fff3cd; color:#856404; border-radius:8px; border:1px solid #ffeeba;">
-            ⚠️ AI 判定今日无深度资讯，以下为系统为您直接抓取的原始标题列表：<br>{backup_html}
+            ⚠️ AI 判定今日无深度资讯，以下为系统直接抓取的原始标题列表：<br>{backup_html}
         </div>
         """
     else:
@@ -84,7 +84,37 @@ def send_mail(content_list, backup_titles):
     except Exception as e:
         print(f"❌ 邮件发送失败: {e}")
 
-# --- 4. 运行逻辑：彻底规避语法崩溃 ---
+# --- 4. 运行逻辑：彻底规避语法崩溃与变量错误 ---
 if __name__ == "__main__":
     final_results = []
-    all_captured_
+    all_captured_titles = [] # 修复变量名拼写错误
+    
+    for src in TARGET_SOURCES:
+        try:
+            print(f"📡 正在扫描: {src['name']}")
+            r = requests.get(src['url'], timeout=20)
+            soup = BeautifulSoup(r.text, 'xml')
+            items = soup.find_all('item')[:6] 
+            
+            feed_text = ""
+            for it in items:
+                title = it.find('title').text
+                all_captured_titles.append(f"[{src['name']}] {title}")
+                feed_text += f"- {title}\n"
+            
+            if feed_text:
+                summary = ai_summarize(feed_text, src['name'])
+                if summary:
+                    # 将换行符提前处理，规避 f-string 中的反斜杠错误
+                    safe_summary = summary.replace('\n', '<br>')
+                    section = f"""
+                    <div style="margin-bottom:20px; padding:15px; background:#f8f9fa; border-left:5px solid #1a73e8;">
+                        <b style="color:#1a73e8;">📍 {src['name']}</b><br>
+                        <div style="margin-top:8px;">{safe_summary}</div>
+                    </div>
+                    """
+                    final_results.append(section)
+        except Exception as e:
+            print(f"⚠️ {src['name']} 异常: {e}")
+            
+    send_mail(final_results, all_captured_titles)
