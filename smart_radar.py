@@ -12,27 +12,25 @@ RECIPIENT_EMAIL = "tanweilin1987@gmail.com"
 SENDER_EMAIL = os.environ.get('EMAIL_USER')
 SENDER_PASS = os.environ.get('EMAIL_PASS')
 
-# 改用 RSS 源：格式统一、无广告、无 Cookie 干扰
+# 改用 RSS 订阅源，彻底杜绝 HTML 垃圾噪音
 TARGET_SOURCES = [
     {"name": "Pocket Gamer RSS", "url": "https://www.pocketgamer.biz/feed/"},
     {"name": "MobileGamer.biz RSS", "url": "https://mobilegamer.biz/feed/"},
     {"name": "GameRefinery Blog", "url": "https://www.gamerefinery.com/feed/"}
 ]
 
-# --- 2. AI 核心：注入来源 Context ---
+# --- 2. AI 核心：修复换行符逻辑，提高识别率 ---
 def ai_summarize(content, source_name):
-    if not GEMINI_API_KEY: return "❌ 错误：未配置 Key"
+    if not GEMINI_API_KEY: return "❌ 未配置 API KEY"
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     prompt = f"""
-    作为专业的游戏行业分析师，请从以下来自 {source_name} 的新闻列表中，挑选出今日最值得关注的 3 条动态。
-    要求：
-    - 优先选择：新游上线/测试、厂商收购、投融资、重大市场数据。
-    - 用中文简明扼要地总结。
-    - 如果没有实质新闻内容，请回复：今日暂无重大更新。
+    你是资深游戏分析师。请从 {source_name} 的新闻列表中挑选 2-3 条今日要闻。
+    重点：新游上线、融资、重大合作。用中文简述。
+    若无实质新闻，请回复：暂无更新。
     
     新闻列表：
-    {content[:15000]}
+    {content[:12000]}
     """
     
     try:
@@ -40,31 +38,29 @@ def ai_summarize(content, source_name):
         res_json = response.json()
         if "candidates" in res_json:
             return res_json["candidates"][0]["content"]["parts"][0]["text"]
-        return "今日暂无重大更新"
+        return "暂无更新"
     except Exception:
-        return "⚠️ AI 响应超时"
+        return "AI 调用超时"
 
-# --- 3. 邮件系统：确保语法结构闭合 ---
+# --- 3. 邮件系统：修复 f-string 反斜杠错误 ---
 def send_mail(content_list):
     combined_body = "".join(content_list)
-    status_msg = ""
     
-    # 状态可视化：区分“代码故障”与“内容为空”
+    # 逻辑：如果结果为空，给出明确的系统状态
+    status_msg = ""
     if not combined_body.strip():
-        status_msg = """
-        <div style="padding:15px; border:1px dashed #ffa500; color:#856404; background:#fff3cd; border-radius:10px; margin-bottom:20px;">
-            📡 <b>探测简报：</b> RSS 链路畅通，但 AI 判定今日暂无符合标准的行业深度动态。
-        </div>
-        """
+        status_msg = '<p style="color:orange;">📡 探测完成：RSS 源链路正常，但今日 AI 判定无重大行业更新。</p>'
 
+    # 修复：不再在 f-string {} 内直接使用 .replace('\n', '<br>') 以避免反斜杠报错
     html_layout = f"""
-    <div style="font-family:sans-serif;max-width:700px;margin:auto;border:1px solid #ddd;padding:30px;border-radius:15px;">
-        <h2 style="color:#1a73e8;text-align:center;border-bottom:4px solid #1a73e8;padding-bottom:12px;">🌍 全球游戏动态·RSS 探测报告</h2>
+    <div style="font-family:sans-serif;max-width:650px;margin:auto;border:1px solid #eee;padding:20px;border-radius:10px;">
+        <h2 style="color:#1a73e8;border-bottom:2px solid #1a73e8;">🎮 全球游戏雷达报</h2>
         {status_msg}
-        <div style="line-height:1.7;color:#333;">{combined_body}</div>
-        <div style="font-size:12px;color:#999;text-align:center;margin-top:40px;border-top:1px solid #eee;padding-top:20px;">
-            验证状态：RSS 模式 | 引擎：Gemini 1.5 Flash | 时间：{time.strftime("%Y-%m-%d %H:%M")}
-        </div>
+        <div style="line-height:1.6;">{combined_body}</div>
+        <hr>
+        <p style="font-size:12px;color:#999;text-align:center;">
+            引擎: Gemini 1.5 Flash | 模式: RSS 纯净模式 | 时间: {time.strftime("%Y-%m-%d %H:%M")}
+        </p>
     </div>
     """
     
@@ -78,39 +74,40 @@ def send_mail(content_list):
             server.starttls()
             server.login(SENDER_EMAIL, SENDER_PASS)
             server.sendmail(SENDER_EMAIL, [RECIPIENT_EMAIL], msg.as_string())
-        print("✅ 探测报告已成功送达")
+        print("✅ 邮件发送成功")
     except Exception as e:
-        print(f"❌ 邮件发送异常: {e}")
+        print(f"❌ 邮件异常: {e}")
 
-# --- 4. 执行流程 ---
+# --- 4. 核心主逻辑 ---
 if __name__ == "__main__":
     results = []
     headers = {'User-Agent': 'Mozilla/5.0'}
     
     for src in TARGET_SOURCES:
         try:
-            print(f"正在扫描 RSS: {src['name']}...")
+            print(f"正在扫描: {src['name']}...")
             r = requests.get(src['url'], headers=headers, timeout=20)
-            soup = BeautifulSoup(r.text, 'xml') # RSS 使用 XML 解析
-            items = soup.find_all('item')[:10] 
+            # RSS 这种 XML 结构极其纯净
+            soup = BeautifulSoup(r.text, 'xml')
+            items = soup.find_all('item')[:8]
             
-            feed_content = ""
+            raw_text = ""
             for it in items:
-                title = it.find('title').get_text() if it.find('title') else ""
-                desc = it.find('description').get_text() if it.find('description') else ""
-                feed_content += f"- Title: {title}\n  Summary: {desc}\n\n"
+                title = it.find('title').text if it.find('title') else ""
+                raw_text += f"Title: {title}\n"
             
-            if len(feed_content) > 50:
-                summary = ai_summarize(feed_content, src['name'])
-                if "今日暂无重大更新" not in summary:
+            if len(raw_text) > 20:
+                summary = ai_summarize(raw_text, src['name'])
+                if "暂无更新" not in summary:
+                    # 先处理好换行符，再存入结果，避免 f-string 报错
+                    formatted_summary = summary.replace('\n', '<br>')
                     section = f"""
-                    <div style="margin-bottom:25px;padding:20px;background:#f9f9f9;border-left:5px solid #1a73e8;">
-                        <b style="color:#1a73e8;font-size:16px;">📍 来源：{src['name']}</b><br>
-                        <div style="margin-top:10px;font-size:14px;color:#444;">{summary.replace('\n', '<br>')}</div>
+                    <div style="background:#f4f7f9;padding:15px;border-radius:8px;margin-bottom:15px;">
+                        <b style="color:#1a73e8;">📍 {src['name']}</b><br>{formatted_summary}
                     </div>
                     """
                     results.append(section)
         except Exception as e:
-            print(f"跳过 {src['name']}: {e}")
+            print(f"错误 {src['name']}: {e}")
             
     send_mail(results)
