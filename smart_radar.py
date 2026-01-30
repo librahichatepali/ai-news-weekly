@@ -7,7 +7,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.header import Header
 
-# --- 1. 配置区域 ---
+# --- 1. 核心配置 ---
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 RECIPIENT_EMAIL = "tanweilin1987@gmail.com"
 SENDER_EMAIL = os.environ.get('EMAIL_USER')
@@ -20,33 +20,64 @@ TARGET_SOURCES = [
     {"name": "DataEye报告", "url": "https://www.dataeye.com/report"}
 ]
 
-# --- 2. AI 核心引擎 ---
+# --- 2. AI 引擎 (强制 v1 稳定版协议) ---
 def ai_summarize(content):
-    if not GEMINI_API_KEY: return "❌ 错误：未检测到 API Key"
+    if not GEMINI_API_KEY: return "❌ 错误：未检测到密钥"
     try:
-        # 强制指定 v1 协议以解决 404 models not found 问题
+        # 强制使用 rest 传输协议，规避 v1beta 的 404 错误
         genai.configure(api_key=GEMINI_API_KEY, transport='rest')
         model = genai.GenerativeModel('gemini-1.5-flash')
         
         prompt = f"""
-        你是一位资深游戏分析师。请从以下内容中提炼【近一个月内】的小游戏情报：
-        - 重点分析 2026年1月 的新题材、玩法趋势或买量爆款。
-        - 提炼 3 条具有实战价值的建议。
+        你是一位资深游戏猎头。请根据网页内容提炼近一个月的小游戏干货：
+        - 识别 2026年1月 的题材、玩法趋势及爆款 ROI 数据。
+        - 剔除无关广告。
         
-        待处理内容：
+        内容如下：
         {content[:4000]}
         """
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
-        return f"⚠️ AI 总结受阻：{str(e)}"
+        return f"⚠️ AI 分析失败: {str(e)}"
 
-# --- 3. 邮件发送系统 ---
+# --- 3. 邮件发送系统 (已修复 EOF 缺失引号问题) ---
 def send_mail(content_list):
     full_body = "".join(content_list)
     if not full_body.strip():
-        full_body = "<p style='color:orange;'>今日扫描完成，但各监控源暂无近期更新的深度内容。</p>"
+        full_body = "<p style='color:orange;'>今日扫描完成，但目标源近期暂无深度干货更新。</p>"
 
-    html_content = f"""
-    <div style="font-family: sans-serif; max-width: 700px; margin: auto; border: 1px solid #eee; padding: 25px; border-radius: 12px;">
-        <h2 style="color: #1a73e8; border-bottom: 3px solid #1a73e8; padding-bottom: 10px; text-align: center;">
+    # 修复 EOF 报错：确保三引号严格闭合
+    html_header = '<div style="font-family:sans-serif;max-width:700px;margin:auto;border:1px solid #eee;padding:25px;border-radius:12px;">'
+    html_title = '<h2 style="color:#1a73e8;border-bottom:3px solid #1a73e8;padding-bottom:10px;text-align:center;">🛡️ 小游戏·深度情报雷达</h2>'
+    html_footer = f'<div style="font-size:11px;color:#aaa;text-align:center;margin-top:30px;border-top:1px solid #f0f0f0;padding-top:15px;">监控时效：近30日 | 时间：{time.strftime("%Y-%m-%d %H:%M")}</div></div>'
+    
+    final_html = f"{html_header}{html_title}{full_body}{html_footer}"
+    
+    msg = MIMEText(final_html, 'html', 'utf-8')
+    msg['From'] = f"SmartRadar <{SENDER_EMAIL}>"
+    msg['To'] = RECIPIENT_EMAIL
+    msg['Subject'] = Header(f"📊 小游戏趋势内参 - {time.strftime('%m-%d')}", 'utf-8')
+    
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
+            server.starttls()
+            server.login(SENDER_EMAIL, SENDER_PASS)
+            server.sendmail(SENDER_EMAIL, [RECIPIENT_EMAIL], msg.as_string())
+        print("✅ 邮件已发出")
+    except Exception as e:
+        print(f"❌ 邮件故障: {e}")
+
+# --- 4. 执行流程 ---
+if __name__ == "__main__":
+    results = []
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    
+    for src in TARGET_SOURCES:
+        try:
+            r = requests.get(src['url'], headers=headers, timeout=20)
+            text = BeautifulSoup(r.text, 'html.parser').get_text(separator=' ', strip=True)
+            summary = ai_summarize(text)
+            
+            if len(summary) > 50:
+                # 修复 Syntax
