@@ -13,7 +13,7 @@ RECIPIENT_EMAIL = "tanweilin1987@gmail.com"
 SENDER_EMAIL = os.environ.get('EMAIL_USER')
 SENDER_PASS = os.environ.get('EMAIL_PASS')
 
-# 精选全球移动游戏媒体源
+# 精选全球移动游戏情报源
 TARGET_SOURCES = [
     {"name": "Pocket Gamer News", "url": "https://www.pocketgamer.biz/news/"},
     {"name": "GameRefinery Blog", "url": "https://www.gamerefinery.com/blog/"},
@@ -24,12 +24,12 @@ TARGET_SOURCES = [
 def ai_summarize(content):
     if not GEMINI_API_KEY: return "❌ 错误：未配置 Key"
     
-    # 锁定 v1beta，解决 image_b7d498 中的 404 报错
+    # 锁定 v1beta，确保 API 稳定响应
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     prompt = (
-        "你是一位资深移动游戏分析师。请从提供的网页文本中提取 3 条最新的行业动态。"
-        "要求：必须使用中文，每条包含标题和简要分析。"
+        "你是一位资深移动游戏情报专家。请从提供的网页文本中提取 3 条最新的、具有深度价值的行业动态。"
+        "要求：必须使用中文回复。如果内容不完整，请基于片段提供最有价值的信息。"
         f"\n\n待分析内容：\n{content[:10000]}"
     )
     
@@ -38,21 +38,21 @@ def ai_summarize(content):
         res_json = response.json()
         if "candidates" in res_json:
             return res_json["candidates"][0]["content"]["parts"][0]["text"]
-        return "⚠️ AI 未能发现具有价值的新闻动态"
+        return "⚠️ AI 分析后未发现符合条件的深度动态"
     except Exception as e:
         return f"⚠️ API 请求异常: {str(e)}"
 
 # --- 3. 邮件发送系统 (彻底解决 f-string 语法错误) ---
 def send_mail(content_list):
-    # 修复核心：预先合并内容，严禁在 f-string 内使用反斜杠
+    # 核心修复点：预先合并内容，严禁在 f-string 内部进行 replace 操作
     combined_body = "".join(content_list)
     
     if not combined_body.strip():
-        combined_body = "<p style='color:orange;'>今日探测完成，但目标源未发现符合条件的动态，请检查网页结构是否变动。</p>"
+        combined_body = "<p style='color:orange;'>今日探测完成，但目标源 HTML 结构可能已变动，未能提取到有效动态。</p>"
 
     html_layout = f"""
     <div style="font-family:sans-serif;max-width:700px;margin:auto;border:1px solid #ddd;padding:25px;border-radius:15px;">
-        <h2 style="color:#1a73e8;text-align:center;border-bottom:3px solid #1a73e8;padding-bottom:12px;">🌍 全球游戏动态·探测报告</h2>
+        <h2 style="color:#1a73e8;text-align:center;border-bottom:3px solid #1a73e8;padding-bottom:12px;">🌍 全球游戏动态·深度探测</h2>
         <div style="line-height:1.7;color:#333;">{combined_body}</div>
         <div style="font-size:12px;color:#999;text-align:center;margin-top:30px;border-top:1px solid #eee;padding-top:15px;">
             验证状态：深度文本清洗 | 引擎：Gemini 1.5 Flash | 时间：{time.strftime("%Y-%m-%d %H:%M")}
@@ -62,18 +62,18 @@ def send_mail(content_list):
     msg = MIMEText(html_layout, 'html', 'utf-8')
     msg['From'] = f"SmartRadar <{SENDER_EMAIL}>"
     msg['To'] = RECIPIENT_EMAIL
-    msg['Subject'] = Header(f"📊 趋势雷达报告 - {time.strftime('%m-%d')}", 'utf-8')
+    msg['Subject'] = Header(f"📊 趋势探测报告 - {time.strftime('%m-%d')}", 'utf-8')
     
     try:
         with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
             server.starttls()
             server.login(SENDER_EMAIL, SENDER_PASS)
             server.sendmail(SENDER_EMAIL, [RECIPIENT_EMAIL], msg.as_string())
-        print("✅ 报告已送达")
+        print("✅ 报告发送成功")
     except Exception as e:
-        print(f"❌ 发送失败: {e}")
+        print(f"❌ 邮件发送失败: {e}")
 
-# --- 4. 深度抓取流程 (解决内容提取为空) ---
+# --- 4. 深度抓取流程 (解决提取噪音) ---
 if __name__ == "__main__":
     results = []
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
@@ -84,7 +84,7 @@ if __name__ == "__main__":
             r = requests.get(src['url'], headers=headers, timeout=25)
             soup = BeautifulSoup(r.text, 'html.parser')
             
-            # 物理剔除干扰：防止 AI 看到无效噪音
+            # 物理剔除干扰：通过 decompose 彻底移除脚本、样式、导航等噪音
             for noise in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
                 noise.decompose()
             
@@ -92,7 +92,7 @@ if __name__ == "__main__":
             summary = ai_summarize(clean_text)
             
             if "⚠️" not in summary and len(summary) > 40:
-                # 修复语法错误：在外部提前处理 HTML 换行
+                # 修复 image_b7587f 语法错误：提前进行 HTML 换行处理
                 safe_summary = summary.replace('\n', '<br>')
                 section = f"""
                 <div style="margin-bottom:20px;padding:15px;background:#fcfcfc;border-left:5px solid #1a73e8;">
