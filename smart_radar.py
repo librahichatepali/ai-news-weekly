@@ -13,24 +13,23 @@ RECIPIENT_EMAIL = "tanweilin1987@gmail.com"
 SENDER_EMAIL = os.environ.get('EMAIL_USER')
 SENDER_PASS = os.environ.get('EMAIL_PASS')
 
-# 监控源：聚焦全球主流移动游戏媒体
+# 精选外网源
 TARGET_SOURCES = [
     {"name": "Pocket Gamer News", "url": "https://www.pocketgamer.biz/news/"},
     {"name": "GameRefinery Blog", "url": "https://www.gamerefinery.com/blog/"},
     {"name": "MobileGamer.biz", "url": "https://mobilegamer.biz/news/"}
 ]
 
-# --- 2. AI 核心引擎 (锁定 v1beta 路径) ---
+# --- 2. AI 核心引擎 (锁定验证成功的 v1beta 路径) ---
 def ai_summarize(content):
     if not GEMINI_API_KEY: return "❌ 错误：未配置 Key"
     
-    # 使用目前最稳定的 v1beta 路径，避免 404 错误
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     prompt = (
-        "你是一位移动游戏分析师。请从提供的网页文本中总结 3 条最新的行业动态。"
-        "要求：必须使用中文回复。如果内容不完整，请基于片段提供最有价值的信息。"
-        f"\n\n待分析文本：\n{content[:9000]}"
+        "你是一位移动游戏分析师。请从提供的网页文本中提取 3 条最新的行业动态。"
+        "必须使用中文回复。如果内容不完整，请基于片段提供最有价值的信息。"
+        f"\n\n待分析内容：\n{content[:9000]}"
     )
     
     try:
@@ -38,22 +37,22 @@ def ai_summarize(content):
         res_json = response.json()
         if "candidates" in res_json:
             return res_json["candidates"][0]["content"]["parts"][0]["text"]
-        return "⚠️ AI 未发现明确动态"
+        return "⚠️ AI 分析中未发现明确动态"
     except Exception as e:
-        return f"⚠️ API 请求异常: {str(e)}"
+        return f"⚠️ 接口请求失败: {str(e)}"
 
-# --- 3. 邮件发送系统 (彻底修复 f-string 反斜杠报错) ---
+# --- 3. 邮件发送系统 (彻底修复 f-string 语法错误) ---
 def send_mail(content_list):
-    # 核心修复点：预先合并内容，避免在 f-string 内部进行字符串处理
-    combined_body = "".join(content_list)
+    # 修复核心：预先处理所有内容的字符串合并，避免在 f-string 内部进行 replace 操作
+    processed_body = "".join(content_list)
     
-    if not combined_body.strip():
-        combined_body = "<p style='color:orange;'>今日探测完成，但目标网站结构可能已变动，未能提取到有效动态。</p>"
+    if not processed_body.strip():
+        processed_body = "<p style='color:orange;'>今日扫描完成，目标网站结构可能已变更，导致文本提取为空。</p>"
 
     html_layout = f"""
     <div style="font-family:sans-serif;max-width:700px;margin:auto;border:1px solid #ddd;padding:30px;border-radius:15px;">
-        <h2 style="color:#1a73e8;text-align:center;border-bottom:4px solid #1a73e8;padding-bottom:12px;">🌍 全球游戏动态·深度探测</h2>
-        <div style="line-height:1.7;color:#333;">{combined_body}</div>
+        <h2 style="color:#1a73e8;text-align:center;border-bottom:4px solid #1a73e8;padding-bottom:12px;">🌍 全球游戏动态·探测报告</h2>
+        <div style="line-height:1.7;color:#333;">{processed_body}</div>
         <div style="font-size:12px;color:#999;text-align:center;margin-top:40px;border-top:1px solid #eee;padding-top:20px;">
             验证状态：深度文本清洗 | 引擎：Gemini 1.5 Flash | 时间：{time.strftime("%Y-%m-%d %H:%M")}
         </div>
@@ -62,47 +61,46 @@ def send_mail(content_list):
     msg = MIMEText(html_layout, 'html', 'utf-8')
     msg['From'] = f"SmartRadar <{SENDER_EMAIL}>"
     msg['To'] = RECIPIENT_EMAIL
-    msg['Subject'] = Header(f"📊 趋势探测报告 - {time.strftime('%m-%d')}", 'utf-8')
+    msg['Subject'] = Header(f"📊 趋势雷达 - {time.strftime('%m-%d')}", 'utf-8')
     
     try:
         with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
             server.starttls()
             server.login(SENDER_EMAIL, SENDER_PASS)
             server.sendmail(SENDER_EMAIL, [RECIPIENT_EMAIL], msg.as_string())
-        print("✅ 报告已成功发出")
+        print("✅ 报告已发送")
     except Exception as e:
         print(f"❌ 邮件发送失败: {e}")
 
-# --- 4. 强力提取流程 (解决解析噪音) ---
+# --- 4. 主流程 (强化文本提取) ---
 if __name__ == "__main__":
     results = []
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     
     for src in TARGET_SOURCES:
         try:
-            print(f"正在分析: {src['name']}...")
-            r = requests.get(src['url'], headers=headers, timeout=25)
+            print(f"正在探测: {src['name']}...")
+            r = requests.get(src['url'], headers=headers, timeout=30)
             soup = BeautifulSoup(r.text, 'html.parser')
             
-            # 物理剔除干扰：防止 AI 抓取到垃圾信息的核心逻辑
-            for noise in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
-                noise.decompose()
+            # 强力清洗：剔除所有脚本、样式和无关标签，解决内容提取为空的问题
+            for element in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
+                element.decompose()
             
             clean_text = soup.get_text(separator=' ', strip=True)
             summary = ai_summarize(clean_text)
             
-            if "⚠️" not in summary and len(summary) > 40:
-                # 修复语法错误：在进入 f-string 前完成换行符转换
-                safe_summary = summary.replace('\n', '<br>')
+            if "⚠️" not in summary and len(summary) > 30:
+                # 修复 image_b7587f 语法错误：提前转换 HTML 换行，不进入 f-string
+                html_summary = summary.replace('\n', '<br>')
                 section = f"""
-                <div style="margin-bottom:20px;padding:15px;background:#fcfcfc;border-left:5px solid #1a73e8;">
-                    <b style="color:#1a73e8;">📍 来源：{src['name']}</b><br>
-                    <div style="margin-top:10px;font-size:14px;">{safe_summary}</div>
+                <div style="margin-bottom:25px;padding:20px;background:#f9f9f9;border-left:5px solid #1a73e8;">
+                    <b style="color:#1a73e8;font-size:16px;">📍 来源：{src['name']}</b><br>
+                    <div style="margin-top:10px;font-size:14px;">{html_summary}</div>
                 </div>
                 """
                 results.append(section)
-        except Exception as e:
-            print(f"跳过 {src['name']}: {e}")
+        except:
             continue
             
     send_mail(results)
