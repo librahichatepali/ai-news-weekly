@@ -20,16 +20,16 @@ TARGET_SOURCES = [
     {"name": "MobileGamer.biz", "url": "https://mobilegamer.biz/news/"}
 ]
 
-# --- 2. AI 核心引擎 (锁定 v1beta 兼容路径) ---
+# --- 2. AI 核心引擎 (锁定 v1beta 路径) ---
 def ai_summarize(content):
     if not GEMINI_API_KEY: return "❌ 错误：未配置 Key"
     
-    # 使用目前最稳定的 v1beta 路径，避免 image_b7d498 中的 404 错误
+    # 使用目前最稳定的 v1beta 路径，避免 404 错误
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     prompt = (
         "你是一位移动游戏分析师。请从提供的网页文本中总结 3 条最新的行业动态。"
-        "要求：必须使用中文，每条包含标题和核心要点。"
+        "要求：必须使用中文回复。如果内容不完整，请基于片段提供最有价值的信息。"
         f"\n\n待分析文本：\n{content[:9000]}"
     )
     
@@ -48,7 +48,7 @@ def send_mail(content_list):
     combined_body = "".join(content_list)
     
     if not combined_body.strip():
-        combined_body = "<p style='color:orange;'>今日探测完成，但目标网站结构可能已变动，未能提取到有效摘要。</p>"
+        combined_body = "<p style='color:orange;'>今日探测完成，但目标网站结构可能已变动，未能提取到有效动态。</p>"
 
     html_layout = f"""
     <div style="font-family:sans-serif;max-width:700px;margin:auto;border:1px solid #ddd;padding:30px;border-radius:15px;">
@@ -73,7 +73,7 @@ def send_mail(content_list):
     except Exception as e:
         print(f"❌ 邮件发送失败: {e}")
 
-# --- 4. 强力提取流程 ---
+# --- 4. 强力提取流程 (解决解析噪音) ---
 if __name__ == "__main__":
     results = []
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
@@ -85,14 +85,14 @@ if __name__ == "__main__":
             soup = BeautifulSoup(r.text, 'html.parser')
             
             # 物理剔除干扰：防止 AI 抓取到垃圾信息的核心逻辑
-            for noise in soup(['script', 'style', 'nav', 'footer', 'header']):
+            for noise in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
                 noise.decompose()
             
             clean_text = soup.get_text(separator=' ', strip=True)
             summary = ai_summarize(clean_text)
             
             if "⚠️" not in summary and len(summary) > 40:
-                # 修复 image_b84199: 在进入 f-string 前完成换行符转换
+                # 修复语法错误：在进入 f-string 前完成换行符转换
                 safe_summary = summary.replace('\n', '<br>')
                 section = f"""
                 <div style="margin-bottom:20px;padding:15px;background:#fcfcfc;border-left:5px solid #1a73e8;">
