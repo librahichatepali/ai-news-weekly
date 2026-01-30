@@ -12,27 +12,31 @@ RECIPIENT_EMAIL = "tanweilin1987@gmail.com"
 SENDER_EMAIL = os.environ.get('EMAIL_USER')
 SENDER_PASS = os.environ.get('EMAIL_PASS')
 
-# 针对性选择容易产出“小游戏/H5”内容的源
+# 监控源（保持不变，确保抓取广度）
 TARGET_SOURCES = [
-    {"name": "Pocket Gamer (移动游戏)", "url": "https://www.pocketgamer.biz/feed/"},
+    {"name": "Pocket Gamer", "url": "https://www.pocketgamer.biz/feed/"},
     {"name": "MobileGamer.biz", "url": "https://mobilegamer.biz/feed/"},
     {"name": "GameRefinery", "url": "https://www.gamerefinery.com/feed/"}
 ]
 
-# --- 2. 纯搬运型 AI 函数：锁定小游戏 + 4条信息 ---
+# --- 2. 强力抓取逻辑：强制 4 条，取消筛选 ---
 def ai_summarize(content, source_name):
     if not GEMINI_API_KEY: return ""
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
-    # 彻底简化：不再进行“是否有价值”的判定
-    # 强制要求提取小游戏相关并凑足4条
+    # 调整后的 Prompt：不再挑剔，只管翻译并补齐 4 条
     prompt = f"""
-    任务：你是专业游戏翻译。请从以下 {source_name} 的新闻中提取【4条】与“小游戏”、“移动游戏”或“排行榜”相关的动态。
+    任务：你是游戏情报搬运工。请从以下 {source_name} 的新闻中提取【4条】关键动态。
     
-    要求：
-    1. 必须翻译成中文。
-    2. 禁止回答“无深度资讯”或“无相关内容”。
-    3. 如果小游戏内容不足4条，请用该媒体最新的其他重要动态补齐，确保产出4条。
+    重点搜索词（如果发现请务必列出）：
+    - 小游戏 (Mini-games / H5 / Instant Games)
+    - 排行榜 / 热销 (Charts / Top Grossing / Ranking)
+    - 市场大盘数据
+    
+    硬性要求：
+    1. 必须输出 4 条信息，不要回答“无相关内容”或“无深度资讯”。
+    2. 如果关于小游戏的内容不足 4 条，请用该源的其他最新新闻补足。
+    3. 全部使用中文。
     
     待处理内容：
     {content}
@@ -44,19 +48,20 @@ def ai_summarize(content, source_name):
         if "candidates" in res_json:
             return res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
         return ""
-    except:
+    except Exception as e:
+        print(f"AI 接口异常: {e}")
         return ""
 
-# --- 3. 稳健发送：修复变量并确保渲染 ---
+# --- 3. 邮件发送系统：彻底修复变量名报错 ---
 def send_mail(content_list, backup_titles):
     ai_output = "".join(content_list).strip()
     
-    # 确保变量名正确，防止 image_9ab91c 中的 NameError 再次发生
+    # 修复 NameError，使用 backup_titles 作为保底
     if not ai_output:
         list_str = "".join([f"<li>{t}</li>" for t in backup_titles])
         main_body = f"""
-        <div style="background:#fff3cd; padding:15px; border-radius:5px;">
-            ⚠️ 抓取测试中：AI 接口未返回，以下为直接抓取的原始标题：
+        <div style="background:#fff3cd; padding:15px; border-radius:8px;">
+            ⚠️ AI 接口未产出（可能由于网络原因），以下为系统直接抓取的原始标题：
             <ul>{list_str}</ul>
         </div>
         """
@@ -64,12 +69,11 @@ def send_mail(content_list, backup_titles):
         main_body = ai_output
 
     html_layout = f"""
-    <div style="font-family:sans-serif; max-width:600px; margin:auto; border:1px solid #eee; padding:20px; border-radius:10px;">
-        <h2 style="color:#1a73e8; border-bottom:2px solid #1a73e8; padding-bottom:10px;">🧪 小游戏内容·压力测试</h2>
-        <div style="line-height:1.7;">{main_body}</div>
-        <hr style="border:0; border-top:1px solid #eee; margin:20px 0;">
-        <div style="font-size:12px; color:#aaa; text-align:center;">
-            测试模式: 锁定小游戏+强制4条 | 时间: {time.strftime("%Y-%m-%d %H:%M")}
+    <div style="font-family:sans-serif; max-width:650px; margin:auto; border:1px solid #eee; padding:25px; border-radius:15px; background:#fff;">
+        <h2 style="color:#1a73e8; text-align:center; border-bottom:2px solid #1a73e8; padding-bottom:10px;">🧪 情报获取能力测试</h2>
+        <div style="line-height:1.8; color:#333;">{main_body}</div>
+        <div style="font-size:12px; color:#aaa; text-align:center; margin-top:30px; border-top:1px solid #f0f0f0; padding-top:15px;">
+            监控模式: 小游戏/热销/强制4条 | 时间: {time.strftime("%Y-%m-%d %H:%M")}
         </div>
     </div>
     """
@@ -84,21 +88,21 @@ def send_mail(content_list, backup_titles):
             server.starttls()
             server.login(SENDER_EMAIL, SENDER_PASS)
             server.sendmail(SENDER_EMAIL, [RECIPIENT_EMAIL], msg.as_string())
-        print("✅ 测试报告已发出")
+        print("✅ 邮件已发送")
     except Exception as e:
         print(f"❌ 发送失败: {e}")
 
-# --- 4. 主运行逻辑 ---
+# --- 4. 运行主逻辑 ---
 if __name__ == "__main__":
     final_results = []
-    all_captured_titles = [] # 明确修复变量名
+    all_captured_titles = [] # 明确定义，修复 NameError
     
     for src in TARGET_SOURCES:
         try:
-            print(f"📡 正在扫描: {src['name']}...")
+            print(f"📡 抓取源: {src['name']}...")
             r = requests.get(src['url'], timeout=20)
             soup = BeautifulSoup(r.text, 'xml')
-            items = soup.find_all('item')[:10] # 扩大抓取范围，确保有足够素材
+            items = soup.find_all('item')[:10] # 扩大采样范围
             
             raw_text = ""
             for it in items:
@@ -111,8 +115,9 @@ if __name__ == "__main__":
                 if summary:
                     safe_summary = summary.replace('\n', '<br>')
                     section = f"""
-                    <div style="margin-bottom:15px; padding:10px; background:#f8f9fa; border-left:4px solid #1a73e8;">
-                        <b>📍 来自: {src['name']}</b><br>{safe_summary}
+                    <div style="margin-bottom:20px; padding:15px; background:#f8f9fa; border-left:5px solid #1a73e8;">
+                        <b style="color:#1a73e8;">📍 {src['name']} 最新动态：</b><br>
+                        <div style="margin-top:8px; font-size:14px;">{safe_summary}</div>
                     </div>
                     """
                     final_results.append(section)
