@@ -14,22 +14,22 @@ SENDER_PASS = os.environ.get('EMAIL_PASS')
 
 TARGET_SOURCES = [
     {"name": "Pocket Gamer (移动游戏)", "url": "https://www.pocketgamer.biz/feed/"},
-    {"name": "MobileGamer.biz (行业动态)", "url": "https://mobilegamer.biz/feed/"},
+    {"name": "MobileGamer.biz (深度专栏)", "url": "https://mobilegamer.biz/feed/"},
     {"name": "GameRefinery (市场趋势)", "url": "https://www.gamerefinery.com/feed/"}
 ]
 
-# --- 2. AI 核心：强制播报逻辑 ---
+# --- 2. AI 核心：不再进行“深度”判定，改为“全量翻译” ---
 def ai_summarize(content, source_name):
     if not GEMINI_API_KEY: return ""
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
-    # 强制 AI 翻译所有标题，禁止其回复“无重大更新”
+    # 修改后的 Prompt：禁止 AI 判定“是否有价值”，强制翻译所有内容
     prompt = f"""
-    任务：你是一个专业游戏翻译。请将来自 {source_name} 的新闻标题翻译成中文。
+    任务：你是一个专业的游戏情报员。请将来自 {source_name} 的新闻标题翻译成中文。
     要求：
-    1. 保持专业，按序号排列翻译后的标题。
-    2. 如果标题包含厂商名或新游名，请加粗。
-    3. 不得拒绝翻译，不得回复“无意义”或“无更新”。
+    1. 简洁直接，按序号排列翻译后的列表。
+    2. 哪怕新闻很简短，也要列出翻译内容。
+    3. 不得回复“今日无重大更新”或“暂无内容”。
     
     待处理列表：
     {content}
@@ -44,28 +44,28 @@ def ai_summarize(content, source_name):
     except:
         return ""
 
-# --- 3. 邮件系统：双重保底机制 ---
+# --- 3. 邮件发送系统：修复物理保底机制 ---
 def send_mail(content_list, backup_titles):
+    # 彻底检查 AI 产出是否为空
     ai_output = "".join(content_list).strip()
     
-    # 保底机制：如果 AI 没说话，强制打印原始英文标题
     if not ai_output:
+        # 如果 AI 没产出任何内容，强制在邮件中通过列表显示原始英文标题
         backup_html = "<ul>" + "".join([f"<li>{t}</li>" for t in backup_titles]) + "</ul>"
         main_body = f"""
         <div style="padding:15px; background:#fff3cd; color:#856404; border-radius:8px; border:1px solid #ffeeba;">
-            ⚠️ AI 生成跳过，为您呈现今日原始抓取标题：<br>{backup_html}
+            ⚠️ AI 判定今日无深度资讯，以下为系统为您直接抓取的原始标题列表：<br>{backup_html}
         </div>
         """
     else:
         main_body = ai_output
 
-    current_time = time.strftime("%Y-%m-%d %H:%M")
     html_layout = f"""
     <div style="font-family:sans-serif; max-width:650px; margin:auto; border:1px solid #eee; padding:25px; border-radius:15px; background:#fff;">
-        <h2 style="color:#1a73e8; text-align:center; border-bottom:2px solid #1a73e8; padding-bottom:10px;">🎮 全球游戏·动态雷达</h2>
+        <h2 style="color:#1a73e8; text-align:center; border-bottom:2px solid #1a73e8; padding-bottom:10px;">📡 每日游戏情报雷达</h2>
         <div style="line-height:1.8; color:#333;">{main_body}</div>
         <div style="font-size:12px; color:#aaa; text-align:center; margin-top:30px; border-top:1px solid #f0f0f0; padding-top:15px;">
-            引擎: Gemini 1.5 Flash | 模式: 强力播报 | 时间: {current_time}
+            引擎: Gemini 1.5 Flash | 模式: 强力产出 | 时间: {time.strftime("%Y-%m-%d %H:%M")}
         </div>
     </div>
     """
@@ -80,32 +80,32 @@ def send_mail(content_list, backup_titles):
             server.starttls()
             server.login(SENDER_EMAIL, SENDER_PASS)
             server.sendmail(SENDER_EMAIL, [RECIPIENT_EMAIL], msg.as_string())
-        print("✅ 邮件发送成功")
+        print("✅ 报告已成功发出")
     except Exception as e:
         print(f"❌ 邮件发送失败: {e}")
 
-# --- 4. 运行逻辑：解决语法冲突 ---
+# --- 4. 运行逻辑：解决语法与内容截断问题 ---
 if __name__ == "__main__":
     final_results = []
-    all_captured_titles = []
+    all_raw_titles = []
     
     for src in TARGET_SOURCES:
         try:
-            print(f"📡 正在扫描: {src['name']}")
+            print(f"正在扫描: {src['name']}...")
             r = requests.get(src['url'], timeout=20)
             soup = BeautifulSoup(r.text, 'xml')
-            items = soup.find_all('item')[:6] 
+            items = soup.find_all('item')[:6] # 每次只抓取最新的 6 条
             
-            feed_text = ""
+            raw_text = ""
             for it in items:
                 title = it.find('title').text
-                all_captured_titles.append(f"[{src['name']}] {title}")
-                feed_text += f"- {title}\n"
+                all_raw_titles.append(f"[{src['name']}] {title}")
+                raw_text += f"- {title}\n"
             
-            if feed_text:
-                summary = ai_summarize(feed_text, src['name'])
+            if raw_text:
+                summary = ai_summarize(raw_text, src['name'])
                 if summary:
-                    # 预处理换行符，规避 f-string 中的反斜杠错误
+                    # 将换行符转换为 HTML 换行，规避 f-string 语法错误
                     safe_summary = summary.replace('\n', '<br>')
                     section = f"""
                     <div style="margin-bottom:20px; padding:15px; background:#f8f9fa; border-left:5px solid #1a73e8;">
@@ -115,6 +115,6 @@ if __name__ == "__main__":
                     """
                     final_results.append(section)
         except Exception as e:
-            print(f"⚠️ {src['name']} 抓取异常: {e}")
+            print(f"❌ {src['name']} 处理异常: {e}")
             
-    send_mail(final_results, all_captured_titles)
+    send_mail(final_results, all_raw_titles)
