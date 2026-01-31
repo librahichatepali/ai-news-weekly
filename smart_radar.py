@@ -6,25 +6,34 @@ import smtplib
 from email.mime.text import MIMEText
 from email.header import Header
 
-# --- 1. 基础配置 ---
+# --- 1. 配置 ---
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 RECIPIENT_EMAIL = "tanweilin1987@gmail.com"
 SENDER_EMAIL = os.environ.get('EMAIL_USER')
 SENDER_PASS = os.environ.get('EMAIL_PASS')
 
-# 选用目前测试最稳、内容质量最高的源
+# 扩展情报源：涵盖国内外深度媒体与数据平台
 TARGET_SOURCES = [
+    # 国内权威：专注买量与小游戏生态
     {"name": "GameLook", "url": "http://www.gamelook.com.cn/"},
-    {"name": "Pocket Gamer", "url": "https://www.pocketgamer.biz/"}
+    {"name": "手游那点事", "url": "https://nadianshi.com/"},
+    
+    # 海外一手：专注榜单变动与全球趋势
+    {"name": "Pocket Gamer.biz", "url": "https://www.pocketgamer.biz/news/"},
+    {"name": "MobileGamer.biz", "url": "https://mobilegamer.biz/"},
+    {"name": "GameRefinery", "url": "https://www.gamerefinery.com/blog/"},
+    
+    # 行业大盘：全球投融资与宏观动态
+    {"name": "GamesIndustry.biz", "url": "https://www.gamesindustry.biz/"},
+    {"name": "VentureBeat (Games)", "url": "https://venturebeat.com/category/games/"}
 ]
 
-# --- 2. 增强型 AI 翻译官：纯净翻译模式 ---
+# --- 2. AI 逻辑：纯净翻译模式 (绕过安全拦截) ---
 def ai_summarize(content, source_name):
     if not GEMINI_API_KEY: return None
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
-    # 采用去敏感化的指令，仅要求翻译，降低 AI 拦截概率
-    prompt = f"你是专业的游戏行业翻译。请将以下来自 {source_name} 的标题翻译成简练的中文，每条一行。严禁评价内容：\n{content}"
+    prompt = f"你是游戏行业资深编辑。请将以下来自 {source_name} 的动态翻译为中文摘要。若包含小游戏、买量或榜单内容请重点突出。每条一行，不要多余废话：\n{content}"
     
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -34,89 +43,64 @@ def ai_summarize(content, source_name):
             {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
         ],
-        "generationConfig": {
-            "temperature": 0.1,  # 降低随机性，确保输出稳定
-            "maxOutputTokens": 1000
-        }
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 800}
     }
     
     try:
         response = requests.post(api_url, json=payload, timeout=30)
         res_json = response.json()
-        
-        # 稳健提取 API 响应，防止 'candidates' 键缺失报错
         if "candidates" in res_json and res_json["candidates"][0].get("content"):
             return res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
-    except Exception as e:
-        print(f"AI 接口异常: {e}")
+    except:
+        pass
     return None
 
-# --- 3. 稳健邮件发送：带 HTML 格式优化 ---
-def send_mail(sections):
-    # 如果所有源都失败，至少发送一个状态通知
-    main_body = "".join(sections) if sections else "<p>今日暂无新情报获取，请检查网络连接。</p>"
-    
-    html_layout = f"""
-    <div style="font-family:sans-serif; max-width:650px; margin:auto; border:1px solid #e0e0e0; padding:25px; border-radius:12px; color:#333;">
-        <h2 style="color:#1a73e8; border-bottom:2px solid #1a73e8; padding-bottom:10px; margin-top:0;">🚀 每日情报 · 游戏市场雷达</h2>
-        {main_body}
-        <div style="margin-top:30px; padding-top:15px; border-top:1px solid #eee; font-size:12px; color:#888; text-align:center;">
-            引擎: Gemini 1.5 Flash | 模式: 自动翻译+备份 | 时间: {time.strftime("%Y-%m-%d %H:%M")}
-        </div>
-    </div>
-    """
-    
-    msg = MIMEText(html_layout, 'html', 'utf-8')
-    msg['From'] = f"SmartRadar <{SENDER_EMAIL}>"
-    msg['To'] = RECIPIENT_EMAIL
-    msg['Subject'] = Header(f"🎮 市场情报简报 - {time.strftime('%m-%d')}", 'utf-8')
-    
+# --- 3. 主程序：多源探测与备份输出 ---
+def fetch_news(src):
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     try:
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
-            server.starttls()
-            server.login(SENDER_EMAIL, SENDER_PASS)
-            server.sendmail(SENDER_EMAIL, [RECIPIENT_EMAIL], msg.as_string())
-        print("✅ 邮件报告已发送")
-    except Exception as e:
-        print(f"❌ 邮件发送失败: {e}")
+        r = requests.get(src['url'], headers=headers, timeout=20)
+        if r.status_code != 200: return None
+        
+        soup = BeautifulSoup(r.text, 'html.parser')
+        # 优化抓取：过滤掉导航栏等干扰字符
+        titles = [t.text.strip() for t in soup.find_all(['h2', 'h3'])[:12] if len(t.text.strip()) > 10]
+        
+        if titles:
+            summary = ai_summarize("\n".join(titles), src['name'])
+            # 解决 f-string 语法坑
+            display = summary.replace('\n', '<br>') if summary else "AI响应异常，展示原始标题：<br>" + "<br>".join(titles)
+            return "<h3>📍 " + src['name'] + "</h3><div style='background:#f9f9f9; padding:12px; border-radius:8px;'>" + display + "</div>"
+    except:
+        return None
+    return None
 
-# --- 4. 主运行程序：绕过所有历史陷阱 ---
 if __name__ == "__main__":
-    final_sections = []
-    # 模拟真实浏览器，减少被网站屏蔽的风险
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0'}
-
+    final_results = []
     for src in TARGET_SOURCES:
-        try:
-            print(f"📡 正在探测: {src['name']}...")
-            r = requests.get(src['url'], headers=headers, timeout=25)
-            
-            if r.status_code != 200:
-                print(f"⚠️ {src['name']} 访问受限 (Code {r.status_code})")
-                continue
-            
-            # 使用内置解析器，不依赖外部 LXML
-            soup = BeautifulSoup(r.text, 'html.parser')
-            # 智能提取新闻标题：过滤掉过短的干扰文本
-            raw_titles = [t.text.strip() for t in soup.find_all(['h2', 'h3'])[:15] if len(t.text.strip()) > 8]
-            
-            if raw_titles:
-                content_to_translate = "\n".join(raw_titles)
-                summary = ai_summarize(content_to_translate, src['name'])
-                
-                # 如果 AI 翻译成功，使用翻译；否则自动降级到原始标题列表
-                if summary:
-                    # 将换行符转为 HTML 换行，并移出 f-string 以修复语法报错
-                    display_text = summary.replace('\n', '<br>')
-                else:
-                    display_text = "<span style='color:#f39c12;'>AI 响应超时，展示原始列表：</span><br>" + "<br>".join(raw_titles)
-                
-                # 构建 HTML 区块
-                section_html = "<h3>📍 来自: " + src['name'] + "</h3>"
-                section_html += "<div style='background:#f9f9f9; padding:15px; border-radius:8px; line-height:1.6;'>" + display_text + "</div>"
-                final_sections.append(section_html)
-                
-        except Exception as e:
-            print(f"❌ 处理 {src['name']} 时出错: {e}")
+        print(f"📡 探测中: {src['name']}...")
+        result = fetch_news(src)
+        if result: final_results.append(result)
 
-    send_mail(final_sections)
+    # 邮件发送逻辑
+    if final_results:
+        html_body = f"""
+        <div style="font-family:sans-serif; max-width:650px; margin:auto; border:1px solid #ddd; padding:20px; border-radius:12px;">
+            <h2 style="color:#1a73e8; border-bottom:2px solid #1a73e8; padding-bottom:8px;">🛰️ 全球游戏·情报雷达 (多源版)</h2>
+            {"".join(final_results)}
+            <p style="font-size:11px; color:#aaa; text-align:center; margin-top:20px;">时间: {time.strftime("%Y-%m-%d %H:%M")}</p>
+        </div>
+        """
+        msg = MIMEText(html_body, 'html', 'utf-8')
+        msg['From'] = f"SmartRadar <{SENDER_EMAIL}>"
+        msg['To'] = RECIPIENT_EMAIL
+        msg['Subject'] = Header(f"🎮 市场深度简报(7源) - {time.strftime('%m-%d')}", 'utf-8')
+        
+        try:
+            with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
+                server.starttls()
+                server.login(SENDER_EMAIL, SENDER_PASS)
+                server.sendmail(SENDER_EMAIL, [RECIPIENT_EMAIL], msg.as_string())
+            print("✅ 报告已送达")
+        except Exception as e:
+            print(f"❌ 发送失败: {e}")
